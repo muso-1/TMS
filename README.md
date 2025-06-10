@@ -1,2 +1,19 @@
-# tenant-management-system
-Tenant management system to help a building manager run a rental apartment efficiently. 
+# Tenant Management System
+
+A web application for landlords to manage tenants, rent, and water bill payments.
+
+## Stack
+- Backend: Node.js + Express + PostgreSQL
+- Frontend: React + Tailwind CSS
+
+## Getting Started
+
+```bash
+cd backend
+npm install
+npm run dev
+
+cd ../frontend
+npm install
+npm start
+ 
