@@ -25,7 +25,7 @@ router.post('/', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const tenants = await prisma.tenant.findMany({
-      include: { unit: true }
+      include: { units: true }
     });
     res.json(tenants);
   } catch (error) {
@@ -66,16 +66,16 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE tenant
-router.delete('/:id', async (req, res) => {
-  try {
-    await prisma.tenant.delete({
-      where: { id: parseInt(req.params.id) }
-    });
+//router.delete('/:id', async (req, res) => {
+//  try {
+//    await prisma.tenant.delete({
+//      where: { id: parseInt(req.params.id) }
+//    });
 
-    res.json({ message: 'Tenant deleted' });
-  } catch (error) {
-    res.status(500).json({ error: 'Error deleting tenant' });
-  }
-});
+//    res.json({ message: 'Tenant deleted' });
+//  } catch (error) {
+//    res.status(500).json({ error: 'Error deleting tenant' });
+//  }
+//});
 
 module.exports = router;
