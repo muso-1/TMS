@@ -42,15 +42,15 @@ model RentBill {
 
 model WaterBill {
   id              Int      @id @default(autoincrement())
-  previousReading Float
-  currentReading  Float
-  usage           Float
-  ratePerUnit     Float
-  totalAmount     Float
-  dueDate         DateTime
-  paid            Boolean  @default(false)
   tenantId        Int
   tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  previousReading Int      @default(0)
+  currentReading  Int
+  unitsUsed       Int
+  amount          Float
+  dueDate         DateTime
+  status          String   @default("pending")
+  createdAt       DateTime @default(now())
 }
 
 model Maintenance {
