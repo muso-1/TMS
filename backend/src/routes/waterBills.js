@@ -6,18 +6,46 @@ const router = express.Router();
 // CREATE water bill
 router.post('/', async (req, res) => {
   try {
-    const { tenantId, unitsUsed, amount, dueDate, status } = req.body;
+    const { tenantId, currentReading, dueDate, status } = req.body;
 
-    if (!tenantId || !unitsUsed || !amount || !dueDate) {
-      return res.status(400).json({ error: 'Tenant ID, units used, amount, and due date are required' });
+    if (!tenantId || !currentReading || !dueDate) {
+      return res.status(400).json({ error: 'Tenant ID, current reading, and due date are required' });
     }
 
+    // 1. Get last water bill for this tenant
+    const lastBill = await prisma.waterBill.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const previousReading = lastBill ? lastBill.currentReading : 0;
+
+    // 2. Calculate usage
+    const unitsUsed = currentReading - previousReading;
+    if (unitsUsed < 0) {
+      return res.status(400).json({ error: 'Current reading must be >= previous reading' });
+    }
+
+    // 3. Apply rate (hardcoded for now, later move to config or DB)
+    const ratePerUnit = 350; // e.g. 50 currency units per unit
+    const amount = unitsUsed * ratePerUnit;
+
+    // 4. Save to DB
     const waterBill = await prisma.waterBill.create({
-      data: { tenantId, unitsUsed, amount, dueDate: new Date(dueDate), status }
+      data: {
+        tenantId,
+        previousReading,
+        currentReading,
+        unitsUsed,
+        amount,
+        dueDate: new Date(dueDate),
+        status: status || 'pending'
+      }
     });
 
     res.status(201).json(waterBill);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Error creating water bill' });
   }
 });
