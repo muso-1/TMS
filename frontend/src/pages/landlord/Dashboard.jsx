@@ -43,10 +43,10 @@ export default function Dashboard() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button className="bg-black text-white px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,tenant:true}))}>Add Tenant</button>
-        <button className="bg-black text-white px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,unit:true}))}>Add Unit</button>
-        <button className="bg-black text-white px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,water:true}))}>Record Water Reading</button>
-        <button className="bg-black text-white px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,rent:true}))}>Record Rent</button>
+        <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,tenant:true}))}>Add Tenant</button>
+        <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,unit:true}))}>Add Unit</button>
+        <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,water:true}))}>Record Water Reading</button>
+        <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,rent:true}))}>Record Rent</button>
         {/* Send reminders actions can be wired when reminder endpoints exist */}
       </div>
 

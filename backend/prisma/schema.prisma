@@ -27,6 +27,7 @@ model Tenant {
 model Unit {
   id         Int     @id @default(autoincrement())
   unitNumber String
+  status     String  @default("vacant")  // new column
   tenantId   Int?
   tenant     Tenant? @relation(fields: [tenantId], references: [id])
 }

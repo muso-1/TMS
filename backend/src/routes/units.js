@@ -7,7 +7,14 @@ const prisma = new PrismaClient();
 router.get('/', async (req, res) => {
   try {
     const units = await prisma.unit.findMany({ include: { tenant: true } });
-    res.json(units);
+
+    // Derive status dynamically
+    const normalized = units.map((u) => ({
+      ...u,
+      status: u.tenantId ? 'occupied' : 'vacant',
+    }));
+
+    res.json(normalized);
   } catch (error) {
     console.error('Error fetching units:', error);
     res.status(500).json({ error: 'Error fetching units' });
@@ -19,9 +26,13 @@ router.get('/:id', async (req, res) => {
   try {
     const unit = await prisma.unit.findUnique({
       where: { id: parseInt(req.params.id) },
-      include: { tenant: true }
+      include: { tenant: true },
     });
     if (!unit) return res.status(404).json({ error: 'Unit not found' });
+
+    // Derive status dynamically
+    unit.status = unit.tenantId ? 'occupied' : 'vacant';
+
     res.json(unit);
   } catch (error) {
     console.error('Error fetching unit:', error);
@@ -32,7 +43,13 @@ router.get('/:id', async (req, res) => {
 // CREATE unit
 router.post('/', async (req, res) => {
   try {
-    const unit = await prisma.unit.create({ data: req.body });
+    const { unitNumber, status } = req.body;
+    const unit = await prisma.unit.create({
+      data: {
+        unitNumber,
+        status: status || 'vacant',
+      },
+    });
     res.status(201).json(unit);
   } catch (error) {
     console.error('Error creating unit:', error);
@@ -43,9 +60,10 @@ router.post('/', async (req, res) => {
 // UPDATE unit
 router.put('/:id', async (req, res) => {
   try {
+    const { unitNumber, status } = req.body;
     const unit = await prisma.unit.update({
       where: { id: parseInt(req.params.id) },
-      data: req.body
+      data: { unitNumber, status },
     });
     res.json(unit);
   } catch (error) {
