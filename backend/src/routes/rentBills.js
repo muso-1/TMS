@@ -1,82 +1,92 @@
-const express = require('express');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const router = express.Router();
+const { Router } = require('express')
+const { PrismaClient } = require('@prisma/client')
+const { getRentBillSummary } = require('../lib/rentBill.summary')
 
-// CREATE rent bill
-router.post('/', async (req, res) => {
+const prisma = new PrismaClient()
+const rentBillsRouter = Router()
+
+// List all bills with summaries
+rentBillsRouter.get('/', async (req, res) => {
   try {
-    const { tenantId, amount, dueDate, status } = req.body;
+    const bills = await prisma.rentBill.findMany({ select: { id: true } })
 
+    const summaries = await Promise.all(
+      bills.map(b => getRentBillSummary(b.id))
+    )
+
+    res.json(summaries)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Get single bill with summary
+rentBillsRouter.get('/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    const summary = await getRentBillSummary(id)
+    res.json(summary)
+  } catch (e) {
+    res.status(404).json({ error: e.message })
+  }
+})
+
+// Create a bill
+rentBillsRouter.post('/', async (req, res) => {
+  try {
+    const { tenantId, amount, dueDate } = req.body
     if (!tenantId || !amount || !dueDate) {
-      return res.status(400).json({ error: 'Tenant ID, amount, and due date are required' });
+      return res.status(400).json({ error: 'tenantId, amount, and dueDate are required' })
     }
 
-    const rentBill = await prisma.rentBill.create({
-      data: { tenantId, amount, dueDate: new Date(dueDate), status }
-    });
+    const bill = await prisma.rentBill.create({
+      data: {
+        tenantId: Number(tenantId),
+        amount: Number(amount),
+        dueDate: new Date(dueDate)
+      }
+    })
 
-    res.status(201).json(rentBill);
-  } catch (error) {
-    res.status(500).json({ error: 'Error creating rent bill' });
+    const summary = await getRentBillSummary(bill.id)
+    res.status(201).json(summary)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
   }
-});
+})
 
-// READ all rent bills
-router.get('/', async (req, res) => {
+// Update a bill
+rentBillsRouter.put('/:id', async (req, res) => {
   try {
-    const rentBills = await prisma.rentBill.findMany({
-      include: { tenant: true }
-    });
-    res.json(rentBills);
-  } catch (error) {
-    res.status(500).json({ error: 'Error fetching rent bills' });
-  }
-});
+    const id = Number(req.params.id)
+    const { amount, dueDate } = req.body
 
-// READ rent bill by ID
-router.get('/:id', async (req, res) => {
+    await prisma.rentBill.update({
+      where: { id },
+      data: {
+        amount: amount !== undefined ? Number(amount) : undefined,
+        dueDate: dueDate ? new Date(dueDate) : undefined
+      }
+    })
+
+    const summary = await getRentBillSummary(id)
+    res.json(summary)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Delete a bill (and its payments)
+rentBillsRouter.delete('/:id', async (req, res) => {
   try {
-    const rentBill = await prisma.rentBill.findUnique({
-      where: { id: parseInt(req.params.id) },
-      include: { tenant: true }
-    });
+    const id = Number(req.params.id)
 
-    if (!rentBill) return res.status(404).json({ error: 'Rent bill not found' });
+    await prisma.payment.deleteMany({ where: { rentBillId: id } })
+    await prisma.rentBill.delete({ where: { id } })
 
-    res.json(rentBill);
-  } catch (error) {
-    res.status(500).json({ error: 'Error fetching rent bill' });
+    res.json({ message: 'Rent bill and its payments deleted' })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
   }
-});
+})
 
-// UPDATE rent bill
-router.put('/:id', async (req, res) => {
-  try {
-    const { amount, dueDate, status } = req.body;
-
-    const rentBill = await prisma.rentBill.update({
-      where: { id: parseInt(req.params.id) },
-      data: { amount, dueDate: dueDate ? new Date(dueDate) : undefined, status }
-    });
-
-    res.json(rentBill);
-  } catch (error) {
-    res.status(500).json({ error: 'Error updating rent bill' });
-  }
-});
-
-// DELETE rent bill
-router.delete('/:id', async (req, res) => {
-  try {
-    await prisma.rentBill.delete({
-      where: { id: parseInt(req.params.id) }
-    });
-
-    res.json({ message: 'Rent bill deleted' });
-  } catch (error) {
-    res.status(500).json({ error: 'Error deleting rent bill' });
-  }
-});
-
-module.exports = router;
+module.exports = rentBillsRouter

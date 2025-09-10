@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listUnits, createUnit } from '../../api/units'
 import { useState } from 'react'
+import Modal from '../../components/ui/Modal'
+import EditUnitForm from '../../components/forms/EditUnitForm'
 
 export default function Units() {
   const queryClient = useQueryClient()
@@ -8,13 +10,15 @@ export default function Units() {
     queryKey: ['units'],
     queryFn: listUnits,
   })
+
   const [form, setForm] = useState({ unitNumber: '', status: 'vacant' })
+  const [editing, setEditing] = useState(null) // <-- NEW: unit being edited
 
   const mutation = useMutation({
     mutationFn: createUnit,
     onSuccess: () => {
-      queryClient.invalidateQueries(['units']) // refresh
-      setForm({ unitNumber: '', status: 'vacant' }) // reset form
+      queryClient.invalidateQueries(['units'])
+      setForm({ unitNumber: '', status: 'vacant' })
     },
   })
 
@@ -39,6 +43,7 @@ export default function Units() {
             <th className="p-2 text-left">ID</th>
             <th className="p-2 text-left">Unit Number</th>
             <th className="p-2 text-left">Status</th>
+            <th className="p-2 text-left">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -47,6 +52,14 @@ export default function Units() {
               <td className="p-2">{unit.id}</td>
               <td className="p-2">{unit.unitNumber}</td>
               <td className="p-2">{unit.status}</td>
+              <td className="p-2">
+                <button
+                  className="text-blue-500 underline"
+                  onClick={() => setEditing(unit)}  // <-- open modal
+                >
+                  Edit
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -63,7 +76,7 @@ export default function Units() {
           className="border p-2 w-full"
           required
         />
-    
+
         <button
           type="submit"
           className="bg-blue-500 text-black px-4 py-2 rounded"
@@ -72,6 +85,20 @@ export default function Units() {
           {mutation.isLoading ? 'Saving…' : 'Add Unit'}
         </button>
       </form>
+
+      {/* Edit Unit Modal */}
+      <Modal
+        title={editing ? `Edit Unit ${editing.id}` : 'Edit Unit'}
+        open={!!editing}
+        onClose={() => setEditing(null)}
+      >
+        {editing && (
+          <EditUnitForm
+            unit={editing}
+            onClose={() => setEditing(null)}
+          />
+        )}
+      </Modal>
     </div>
   )
 }

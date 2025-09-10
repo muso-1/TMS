@@ -8,6 +8,7 @@ const unitRoutes = require('./routes/units');
 const rentBillRoutes = require('./routes/rentBills');
 const waterBillRoutes = require('./routes/waterBills');
 const maintenanceRoutes = require('./routes/maintenance');
+const paymentsRouter = require('./routes/payments')
 
 const app = express();
 app.use(cors());
@@ -18,5 +19,6 @@ app.use('/api/units', unitRoutes);
 app.use('/api/rentbills', rentBillRoutes);
 app.use('/api/waterbills', waterBillRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/payments', paymentsRouter)
 
 module.exports = app;

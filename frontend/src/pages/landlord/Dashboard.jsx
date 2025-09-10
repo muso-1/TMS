@@ -11,13 +11,14 @@ import WaterBillForm from '../../components/forms/WaterBillForm'
 import RentBillForm from '../../components/forms/RentBillForm'
 import { useState, useMemo } from 'react'
 import { monthKey, formatMoney } from '../../components/utils/format'
+import AssignTenantForm from '../../components/forms/AssignTenantForm'
 
 export default function Dashboard() {
-  const [open, setOpen] = useState({ tenant:false, unit:false, water:false, rent:false })
+  const [open, setOpen] = useState({ tenant:false, unit:false, water:false, rent:false, assign:false })
   const { data: tenants = [] } = useQuery({ queryKey: ['tenants'], queryFn: listTenants })
   const { data: units = [] }   = useQuery({ queryKey: ['units'], queryFn: listUnits })
-  const { data: wbs = [] }     = useQuery({ queryKey: ['water-bills'], queryFn: listWaterBills })
-  const { data: rbs = [] }     = useQuery({ queryKey: ['rent-bills'],  queryFn: listRentBills  })
+  const { data: wbs = [] }     = useQuery({ queryKey: ['waterBills'], queryFn: listWaterBills })
+  const { data: rbs = [] }     = useQuery({ queryKey: ['rentBills'],  queryFn: listRentBills  })
 
   const vacantUnits = units.filter(u => !u.tenantId).length
   const nowKey = monthKey(new Date())
@@ -47,6 +48,7 @@ export default function Dashboard() {
         <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,unit:true}))}>Add Unit</button>
         <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,water:true}))}>Record Water Reading</button>
         <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,rent:true}))}>Record Rent</button>
+        <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,assign:true}))}>Assign Unit to Tenant</button>
         {/* Send reminders actions can be wired when reminder endpoints exist */}
       </div>
 
@@ -61,6 +63,9 @@ export default function Dashboard() {
       </Modal>
       <Modal title="Create Rent Bill" open={open.rent} onClose={()=>setOpen(o=>({...o,rent:false}))}>
         <RentBillForm onClose={()=>setOpen(o=>({...o,rent:false}))} />
+      </Modal>
+      <Modal title="Assign Tenant to Unit" open={open.assign} onClose={()=>setOpen(o=>({...o,assign:false}))}>
+        <AssignTenantForm tenants={tenants} units={units} onClose={()=>setOpen(o=>({...o,assign:false}))} />
       </Modal>
     </div>
   )

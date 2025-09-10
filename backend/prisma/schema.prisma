@@ -33,12 +33,39 @@ model Unit {
 }
 
 model RentBill {
-  id       Int      @id @default(autoincrement())
-  amount   Float
-  dueDate  DateTime
-  paid     Boolean  @default(false)
-  tenantId Int
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+id Int @id @default(autoincrement())
+amount Float
+dueDate DateTime
+paid Boolean @default(false)
+tenantId Int
+tenant Tenant @relation(fields: [tenantId], references: [id])
+payments Payment[]
+
+
+@@index([tenantId])
+@@index([dueDate])
+}
+
+
+model Payment {
+id Int @id @default(autoincrement())
+amount Float
+paidAt DateTime @default(now())
+method String?
+reference String?
+note String?
+
+
+rentBillId Int
+rentBill RentBill @relation(fields: [rentBillId], references: [id])
+
+
+createdAt DateTime @default(now())
+updatedAt DateTime @updatedAt
+
+
+@@index([rentBillId])
+@@index([paidAt])
 }
 
 model WaterBill {

@@ -72,6 +72,23 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// ASSIGN tenant to unit
+router.put('/:id/assign-tenant', async (req, res) => {
+  try {
+    const { tenantId } = req.body;
+
+    const unit = await prisma.unit.update({
+      where: { id: parseInt(req.params.id) },
+      data: { tenantId: tenantId ? parseInt(tenantId) : null, status: tenantId ? "occupied" : "vacant" }
+    });
+
+    res.json(unit);
+  } catch (error) {
+    console.error('Error assigning tenant to unit:', error);
+    res.status(500).json({ error: 'Error assigning tenant to unit' });
+  }
+});
+
 // DELETE unit
 router.delete('/:id', async (req, res) => {
   try {

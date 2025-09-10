@@ -7,9 +7,10 @@ import Tenants from './pages/landlord/Tenants'
 import Units from './pages/landlord/Units'
 import WaterBills from './pages/landlord/WaterBills'
 import Rent from './pages/landlord/Rent'
+import RentBillDetails from './pages/landlord/RentBillDetails'
 import Maintenance from './pages/landlord/Maintenance'
-// placeholders
 import Payments from './pages/landlord/Payments'
+// placeholders
 import Reports from './pages/landlord/Reports'
 import Caretakers from './pages/landlord/Caretakers'
 import './App.css'
@@ -32,6 +33,7 @@ function App() {
               <Route path="/landlord/units" element={<Units />} />
               <Route path="/landlord/water-bills" element={<WaterBills />} />
               <Route path="/landlord/rent" element={<Rent />} />
+              <Route path="/rent-bills/:id" element={<RentBillDetails />} />
               <Route path="/landlord/maintenance" element={<Maintenance />} />
               <Route path="/landlord/payments" element={<Payments />} />
               <Route path="/landlord/reports" element={<Reports />} />
