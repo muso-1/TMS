@@ -12,7 +12,7 @@ A web application for landlords to manage tenants, rent, and water bill payments
 cd backend
 docker compose up -d
 npm install
-npm run dev
+npx nodemon src/server.js
 
 cd ../frontend
 npm install
