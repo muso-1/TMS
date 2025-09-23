@@ -24,18 +24,25 @@ export default function PaymentForm({ onClose, payment }) {
   })
 
   const mutation = useMutation({
-    mutationFn: payment
-      ? (data) => updatePayment(payment.id, data)
-      : createPayment,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['payments'])
-      queryClient.invalidateQueries(['rent-bills'])
-      onClose()
-    },
-  })
+  mutationFn: payment
+    ? (data) => updatePayment(payment.id, data)
+    : createPayment,
+  onSuccess: (data) => {
+    console.log("✅ Mutation success:", data)
+    queryClient.invalidateQueries(['payments'])
+    queryClient.invalidateQueries(['rent-bills'])
+    onClose()
+  },
+  onError: (error) => {
+    console.error("❌ Mutation error:", error)
+  },
+})
 
   const handleSubmit = (e) => {
     e.preventDefault()
+
+    console.log("Submitting", { rentBillId, amount, paidAt, method, reference, note })
+
     mutation.mutate({
       rentBillId: Number(rentBillId),
       amount: Number(amount),
@@ -142,7 +149,7 @@ export default function PaymentForm({ onClose, payment }) {
         </button>
         <button
           type="submit"
-          className="bg-black text-white px-3 py-1 rounded"
+          className="bg-black text-black px-3 py-1 rounded"
         >
           {payment ? 'Update' : 'Create'}
         </button>

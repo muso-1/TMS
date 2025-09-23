@@ -84,21 +84,40 @@ res.status(500).json({ error: e.message })
 
 // Update
 paymentsRouter.patch('/:id', async (req, res) => {
-try {
-const id = Number(req.params.id)
-const existing = await prisma.payment.findUnique({ where: { id }, select: { rentBillId: true } })
-if (!existing) return res.status(404).json({ error: 'Not found' })
+  try {
+    const id = Number(req.params.id)
+    const existing = await prisma.payment.findUnique({
+      where: { id },
+      select: { rentBillId: true }
+    })
+    if (!existing) return res.status(404).json({ error: 'Not found' })
 
+    // destructure body
+    const { rentBillId, amount, paidAt, method, reference, note } = req.body
 
-const payment = await prisma.payment.update({ where: { id }, data: req.body })
-const summary = await recalcRentBillPaidStatus(existing.rentBillId)
+    // build updateData safely
+    const updateData = {}
+    if (rentBillId !== undefined) updateData.rentBillId = Number(rentBillId)
+    if (amount !== undefined) updateData.amount = Number(amount)
+    if (paidAt !== undefined) updateData.paidAt = new Date(paidAt)
+    if (method !== undefined) updateData.method = method
+    if (reference !== undefined) updateData.reference = reference
+    if (note !== undefined) updateData.note = note
 
+    const payment = await prisma.payment.update({
+      where: { id },
+      data: updateData,
+    })
 
-res.json({ payment, summary })
-} catch (e) {
-res.status(500).json({ error: e.message })
-}
+    const summary = await recalcRentBillPaidStatus(existing.rentBillId)
+
+    res.json({ payment, summary })
+  } catch (e) {
+    console.error("❌ Payment update error:", e) // <-- log full error
+    res.status(500).json({ error: e.message })
+  }
 })
+
 
 
 // Delete
