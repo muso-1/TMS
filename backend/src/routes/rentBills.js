@@ -8,28 +8,107 @@ const rentBillsRouter = Router()
 // List all bills with summaries
 rentBillsRouter.get('/', async (req, res) => {
   try {
-    const bills = await prisma.rentBill.findMany({ select: { id: true } })
+    const bills = await prisma.rentBill.findMany({
+      include: {
+        lease: {
+          include: {
+            tenant: true,
+            unit: true
+          }
+        },
+        payments: true
+      },
+      orderBy: { dueDate: 'desc' }
+    })
 
-    const summaries = await Promise.all(
-      bills.map(b => getRentBillSummary(b.id))
-    )
+    // Transforms the data to a frontend-friendly summary format
+    const summaries = bills.map(bill => ({
+      id: bill.id,
+      amount: bill.amount,
+      dueDate: bill.dueDate,
+      paid: bill.paid,
+      payments: bill.payments,
+      lease: {
+        id: bill.lease?.id,
+        startDate: bill.lease?.startDate,
+        endDate: bill.lease?.endDate,
+        monthlyRent: bill.lease?.monthlyRent,
+        tenant: bill.lease?.tenant ? {
+          id: bill.lease.tenant.id,
+          name: bill.lease.tenant.name,
+          email: bill.lease.tenant.email,
+          phone: bill.lease.tenant.phone
+        } : null,
+        unit: bill.lease?.unit ? {
+          id: bill.lease.unit.id,
+          unitNumber: bill.lease.unit.unitNumber,
+          status: bill.lease.unit.status
+        } : null
+      }
+    }))
 
     res.json(summaries)
   } catch (e) {
+    console.error('Error fetching rent bills:', e)
     res.status(500).json({ error: e.message })
   }
 })
+
 
 // Get single bill with summary
 rentBillsRouter.get('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id)
-    const summary = await getRentBillSummary(id)
+
+    const bill = await prisma.rentBill.findUnique({
+      where: { id },
+      include: {
+        lease: {
+          include: {
+            tenant: true,
+            unit: true
+          }
+        },
+        payments: true
+      }
+    })
+
+    if (!bill) {
+      return res.status(404).json({ error: 'Rent bill not found' })
+    }
+
+    const summary = {
+      id: bill.id,
+      amount: bill.amount,
+      dueDate: bill.dueDate,
+      paid: bill.paid,
+      payments: bill.payments,
+      lease: {
+        id: bill.lease?.id,
+        startDate: bill.lease?.startDate,
+        endDate: bill.lease?.endDate,
+        monthlyRent: bill.lease?.monthlyRent,
+        tenant: bill.lease?.tenant ? {
+          id: bill.lease.tenant.id,
+          name: bill.lease.tenant.name,
+          email: bill.lease.tenant.email,
+          phone: bill.lease.tenant.phone
+        } : null,
+        unit: bill.lease?.unit ? {
+          id: bill.lease.unit.id,
+          unitNumber: bill.lease.unit.unitNumber,
+          status: bill.lease.unit.status
+        } : null
+      }
+    }
+
     res.json(summary)
   } catch (e) {
-    res.status(404).json({ error: e.message })
+    console.error('Error fetching rent bill:', e)
+    res.status(500).json({ error: e.message })
   }
 })
+
 
 // Create a bill
 rentBillsRouter.post('/', async (req, res) => {
