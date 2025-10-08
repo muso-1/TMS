@@ -113,7 +113,7 @@ paymentsRouter.patch('/:id', async (req, res) => {
 
     res.json({ payment, summary })
   } catch (e) {
-    console.error("❌ Payment update error:", e) // <-- log full error
+    console.error("Payment update error:", e) // log full error
     res.status(500).json({ error: e.message })
   }
 })

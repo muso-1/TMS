@@ -20,7 +20,6 @@ model Tenant {
   phone       String
   units       Unit[]
   leases      Lease[]       @relation("TenantLeases")
-  rentBills   RentBill[]    @relation("TenantRentBills")
   waterBills  WaterBill[]
   maintenance Maintenance[]
 }
@@ -32,15 +31,15 @@ model Unit {
   tenantId   Int?
   tenant     Tenant? @relation(fields: [tenantId], references: [id])
 
-  leases Lease[] // NEW: track leases on units too
+  leases Lease[] // leases on units too
 }
 
 model Lease {
   id          Int       @id @default(autoincrement())
-  tenantId    Int? // optional for now
-  tenant      Tenant?   @relation("TenantLeases", fields: [tenantId], references: [id])
-  unitId      Int?
-  unit        Unit?     @relation(fields: [unitId], references: [id])
+  tenantId    Int
+  tenant      Tenant   @relation("TenantLeases", fields: [tenantId], references: [id])
+  unitId      Int
+  unit        Unit     @relation(fields: [unitId], references: [id])
   monthlyRent Float
   startDate   DateTime
   endDate     DateTime?
@@ -56,16 +55,12 @@ model RentBill {
   dueDate DateTime
   paid    Boolean  @default(false)
 
-  tenantId Int
-  tenant   Tenant @relation("TenantRentBills", fields: [tenantId], references: [id])
-
   leaseId Int
   lease   Lease   @relation(fields: [leaseId], references: [id])
 
 
   payments Payment[]
 
-  @@index([tenantId])
   @@index([dueDate])
   @@index([leaseId])
 }

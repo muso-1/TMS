@@ -34,22 +34,37 @@ rentBillsRouter.get('/:id', async (req, res) => {
 // Create a bill
 rentBillsRouter.post('/', async (req, res) => {
   try {
-    const { tenantId, amount, dueDate } = req.body
-    if (!tenantId || !amount || !dueDate) {
-      return res.status(400).json({ error: 'tenantId, amount, and dueDate are required' })
+    const { leaseId, dueDate } = req.body
+
+    // Validate input
+    if (!leaseId || !dueDate) {
+      return res.status(400).json({ error: 'leaseId and dueDate are required' })
     }
 
+    // Fetch lease to get monthlyRent (and verify it exists)
+    const lease = await prisma.lease.findUnique({
+      where: { id: Number(leaseId) },
+      include: { tenant: true, unit: true } // return details later
+    })
+
+    if (!lease) {
+      return res.status(404).json({ error: 'Lease not found' })
+    }
+
+    // Create rent bill using lease.monthlyRent
     const bill = await prisma.rentBill.create({
       data: {
-        tenantId: Number(tenantId),
-        amount: Number(amount),
+        leaseId: lease.id,
+        amount: lease.monthlyRent, 
         dueDate: new Date(dueDate)
       }
     })
 
+    // Return rent bill summary
     const summary = await getRentBillSummary(bill.id)
     res.status(201).json(summary)
   } catch (e) {
+    console.error('Error creating rent bill:', e)
     res.status(500).json({ error: e.message })
   }
 })
