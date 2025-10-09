@@ -12,7 +12,7 @@ const prisma = new PrismaClient()
  * Ensures `paid` is up to date.
  */
 async function getRentBillSummary(id) {
-  // Fetch bill with full lease context
+  // 1️⃣ Fetch bill with full lease context
   const rentBill = await prisma.rentBill.findUnique({
     where: { id },
     include: {
@@ -28,14 +28,14 @@ async function getRentBillSummary(id) {
 
   if (!rentBill) throw new Error('RentBill not found')
 
-  // Ensure `paid` field is accurate
+  // 2️⃣ Ensure `paid` field is accurate
   await recalcRentBillPaidStatus(id)
 
-  // Compute derived fields
+  // 3️⃣ Compute derived fields
   const totalPaid = rentBill.payments.reduce((sum, p) => sum + p.amount, 0)
   const balance = rentBill.amount - totalPaid
 
-  // Return frontend-friendly summary object
+  // 4️⃣ Return frontend-friendly summary object
   return {
     id: rentBill.id,
     amount: rentBill.amount,

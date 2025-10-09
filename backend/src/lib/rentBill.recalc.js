@@ -1,31 +1,46 @@
 const { PrismaClient } = require('@prisma/client')
 const prisma = new PrismaClient()
 
-
-//this function is the automatic bookkeeper that keeps your RentBill status in sync with its Payment records.
-
+/**
+ * Recalculates the "paid" status of a rent bill based on payments.
+ * - Fetches bill, lease.monthlyRent, and total payments
+ * - Updates the bill's `paid` field accordingly
+ * - Returns totals and payment status summary
+ */
 async function recalcRentBillPaidStatus(rentBillId) {
-    const [bill, agg] = await Promise.all([
-        prisma.rentBill.findUnique({ where: { id: rentBillId }, select: { amount: true } }),
-        prisma.payment.aggregate({ where: { rentBillId }, _sum: { amount: true } })
-    ])
+  // Fetch bill with lease info
+  const bill = await prisma.rentBill.findUnique({
+    where: { id: rentBillId },
+    include: { lease: true }
+  })
 
+  if (!bill) throw new Error('RentBill not found')
 
-    if (!bill) throw new Error('RentBill not found')
+  // Compute total payments for this bill
+  const agg = await prisma.payment.aggregate({
+    where: { rentBillId },
+    _sum: { amount: true }
+  })
 
+  const totalPaid = agg._sum.amount ?? 0
 
-    const totalPaid = agg._sum.amount ?? 0
-    const fullyPaid = totalPaid >= bill.amount
+  // Use lease.monthlyRent as source of truth if present
+  const billAmount = bill.lease?.monthlyRent ?? bill.amount
 
+  // Determine if bill is fully paid
+  const fullyPaid = totalPaid >= billAmount
 
-    await prisma.rentBill.update({
-        where: { id: rentBillId },
-        data: { paid: fullyPaid }
-    })
+  // Update the bill status
+  await prisma.rentBill.update({
+    where: { id: rentBillId },
+    data: { paid: fullyPaid }
+  })
 
-
-    return { totalPaid, billAmount: bill.amount, fullyPaid }
+  return {
+    totalPaid,
+    billAmount,
+    fullyPaid
+  }
 }
-
 
 module.exports = { recalcRentBillPaidStatus }
