@@ -21,7 +21,11 @@ export default function Rent() {
   }
 
   const columns = [
-    { key: 'tenant', header: 'Tenant', cell: r => r.tenant?.name ?? r.tenantId },
+    {
+    key: 'tenant',
+    header: 'Tenant',
+    cell: r => r.lease.tenant?.name || '—'
+    },
     { key: 'amount', header: 'Amount', cell: r => formatMoney(r.amount) },
     { key: 'dueDate', header: 'Due', cell: r => formatDate(r.dueDate) },
     { key: 'status', header: 'Status', cell: r => r.paid ? 'Paid' : (r.status || 'Pending') },

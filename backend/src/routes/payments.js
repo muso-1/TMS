@@ -7,7 +7,7 @@ const prisma = new PrismaClient()
 const paymentsRouter = Router()
 
 
-// List payments
+// List payments (now includes bill -> lease -> tenant/unit context)
 paymentsRouter.get('/', async (req, res) => {
   try {
     const page = Number(req.query.page ?? 1)
@@ -77,7 +77,8 @@ paymentsRouter.get('/', async (req, res) => {
   }
 })
 
-// Get one payment
+
+// Get one payment (with context)
 paymentsRouter.get('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id)
@@ -105,7 +106,6 @@ paymentsRouter.get('/:id', async (req, res) => {
     res.status(500).json({ error: e.message })
   }
 })
-
 
 // Create a payment
 paymentsRouter.post('/', async (req, res) => {
@@ -154,6 +154,7 @@ paymentsRouter.post('/', async (req, res) => {
     res.status(500).json({ error: e.message })
   }
 })
+
 
 // Update payment
 paymentsRouter.patch('/:id', async (req, res) => {

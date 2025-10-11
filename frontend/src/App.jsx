@@ -13,6 +13,7 @@ import Payments from './pages/landlord/Payments'
 // placeholders
 import Reports from './pages/landlord/Reports'
 import Caretakers from './pages/landlord/Caretakers'
+import LeasesPage from './pages/landlord/Leases'
 import './App.css'
 
 function App() {
@@ -38,6 +39,7 @@ function App() {
               <Route path="/landlord/payments" element={<Payments />} />
               <Route path="/landlord/reports" element={<Reports />} />
               <Route path="/landlord/caretakers" element={<Caretakers />} />
+              <Route path="/landlord/leases" element={<LeasesPage />} />
               {/* Add Caretaker/Tenant routes later */}
             </Routes>
           </div>
