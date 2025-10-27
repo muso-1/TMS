@@ -1,7 +1,6 @@
-const { PrismaClient } = require('@prisma/client')
+const prisma = require('../lib/prisma');
 const { recalcRentBillPaidStatus } = require('./rentBill.recalc')
 
-const prisma = new PrismaClient()
 
 /**
  * Get a rent bill with derived fields:

@@ -1,109 +1,168 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const { sendBillReminder } = require('../services/reminderService'); // ✅ import reminder logic
+
 const prisma = new PrismaClient();
 const router = express.Router();
 
-// CREATE water bill
+/**
+ * @route POST /api/waterbills
+ * @desc Create one or multiple water bills manually (e.g., monthly readings)
+ */
 router.post('/', async (req, res) => {
   try {
-    const { tenantId, currentReading, dueDate, status } = req.body;
+    const billsData = Array.isArray(req.body) ? req.body : [req.body];
 
-    if (!tenantId || !currentReading || !dueDate) {
-      return res.status(400).json({ error: 'Tenant ID, current reading, and due date are required' });
+    if (billsData.length === 0) {
+      return res.status(400).json({ error: 'No water bills provided.' });
     }
 
-    // 1. Get last water bill for this tenant
-    const lastBill = await prisma.waterBill.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' }
-    });
+    const createdBills = [];
 
-    const previousReading = lastBill ? lastBill.currentReading : 0;
+    for (const bill of billsData) {
+      const { tenantId, currentReading, dueDate, status } = bill;
 
-    // 2. Calculate usage
-    const unitsUsed = currentReading - previousReading;
-    if (unitsUsed < 0) {
-      return res.status(400).json({ error: 'Current reading must be >= previous reading' });
-    }
-
-    // 3. Apply rate (hardcoded for now, later move to config or DB)
-    const ratePerUnit = 350; // e.g. 50 currency units per unit
-    const amount = unitsUsed * ratePerUnit;
-
-    // 4. Save to DB
-    const waterBill = await prisma.waterBill.create({
-      data: {
-        tenantId,
-        previousReading,
-        currentReading,
-        unitsUsed,
-        amount,
-        dueDate: new Date(dueDate),
-        status: status || 'pending'
+      if (!tenantId || !currentReading || !dueDate) {
+        return res.status(400).json({
+          error: 'tenantId, currentReading, and dueDate are required.',
+        });
       }
-    });
 
-    res.status(201).json(waterBill);
+      // Fetch last bill to get previous reading
+      const lastBill = await prisma.waterBill.findFirst({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const previousReading = lastBill ? lastBill.currentReading : 0;
+
+      // Calculate usage
+      const unitsUsed = currentReading - previousReading;
+      if (unitsUsed < 0) {
+        return res.status(400).json({
+          error: 'Current reading must be greater than or equal to previous reading.',
+        });
+      }
+
+      // Apply rate (later make configurable)
+      const ratePerUnit = 350;
+      const amount = unitsUsed * ratePerUnit;
+
+      // Create the new bill
+      const newBill = await prisma.waterBill.create({
+        data: {
+          tenantId,
+          previousReading,
+          currentReading,
+          unitsUsed,
+          amount,
+          dueDate: new Date(dueDate),
+          status: status || 'pending',
+          reminderSent: false,
+          reminderSentAt: null,
+        },
+      });
+
+      createdBills.push(newBill);
+    }
+
+    // Send reminders for the newly created bills
+    const newBillIds = createdBills.map(b => b.id);
+    if (newBillIds.length > 0) {
+      await sendBillReminder('water', { onlyNewBills: true, newBillIds });
+    }
+
+    res.status(201).json({
+      message: 'Water bills created successfully and reminders sent.',
+      created: createdBills,
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error creating water bill' });
+    console.error('Error creating water bills:', error);
+    res.status(500).json({ error: 'Error creating water bills.' });
   }
 });
 
-// READ all water bills
+/**
+ * @route GET /api/waterbills
+ * @desc Get all water bills
+ */
 router.get('/', async (req, res) => {
   try {
     const waterBills = await prisma.waterBill.findMany({
-      include: { tenant: true }
+      include: { tenant: true },
+      orderBy: { createdAt: 'desc' },
     });
+
     res.json(waterBills);
   } catch (error) {
-    res.status(500).json({ error: 'Error fetching water bills' });
+    console.error('Error fetching water bills:', error);
+    res.status(500).json({ error: 'Error fetching water bills.' });
   }
 });
 
-// READ water bill by ID
+/**
+ * @route GET /api/waterbills/:id
+ * @desc Get a single water bill
+ */
 router.get('/:id', async (req, res) => {
   try {
+    const id = Number(req.params.id);
     const waterBill = await prisma.waterBill.findUnique({
-      where: { id: parseInt(req.params.id) },
-      include: { tenant: true }
+      where: { id },
+      include: { tenant: true },
     });
 
-    if (!waterBill) return res.status(404).json({ error: 'Water bill not found' });
+    if (!waterBill) {
+      return res.status(404).json({ error: 'Water bill not found.' });
+    }
 
     res.json(waterBill);
   } catch (error) {
-    res.status(500).json({ error: 'Error fetching water bill' });
+    console.error('Error fetching water bill:', error);
+    res.status(500).json({ error: 'Error fetching water bill.' });
   }
 });
 
-// UPDATE water bill
+/**
+ * @route PUT /api/waterbills/:id
+ * @desc Update a water bill
+ */
 router.put('/:id', async (req, res) => {
   try {
-    const { unitsUsed, amount, dueDate, status } = req.body;
+    const id = Number(req.params.id);
+    const { currentReading, unitsUsed, amount, dueDate, status } = req.body;
 
-    const waterBill = await prisma.waterBill.update({
-      where: { id: parseInt(req.params.id) },
-      data: { unitsUsed, amount, dueDate: dueDate ? new Date(dueDate) : undefined, status }
+    const updated = await prisma.waterBill.update({
+      where: { id },
+      data: {
+        currentReading,
+        unitsUsed,
+        amount,
+        dueDate: dueDate ? new Date(dueDate) : undefined,
+        status,
+      },
     });
 
-    res.json(waterBill);
+    res.json(updated);
   } catch (error) {
-    res.status(500).json({ error: 'Error updating water bill' });
+    console.error('Error updating water bill:', error);
+    res.status(500).json({ error: 'Error updating water bill.' });
   }
 });
 
-// DELETE water bill
+/**
+ * @route DELETE /api/waterbills/:id
+ * @desc Delete a water bill
+ */
 router.delete('/:id', async (req, res) => {
   try {
-    await prisma.waterBill.delete({
-      where: { id: parseInt(req.params.id) }
-    });
+    const id = Number(req.params.id);
+    await prisma.waterBill.delete({ where: { id } });
 
-    res.json({ message: 'Water bill deleted' });
+    res.json({ message: 'Water bill deleted successfully.' });
   } catch (error) {
-    res.status(500).json({ error: 'Error deleting water bill' });
+    console.error('Error deleting water bill:', error);
+    res.status(500).json({ error: 'Error deleting water bill.' });
   }
 });
 

@@ -1,11 +1,11 @@
-const { Router } = require('express')
-const { PrismaClient } = require('@prisma/client')
-const { getRentBillSummary } = require('../lib/rentBill.summary')
+const { Router } = require('express');
+const { PrismaClient } = require('@prisma/client');
+const { getRentBillSummary } = require('../lib/rentBill.summary');
 
-const prisma = new PrismaClient()
-const rentBillsRouter = Router()
+const prisma = new PrismaClient();
+const rentBillsRouter = Router();
 
-// List all bills with summaries
+// 🧾 List all rent bills with summaries
 rentBillsRouter.get('/', async (req, res) => {
   try {
     const bills = await prisma.rentBill.findMany({
@@ -13,52 +13,56 @@ rentBillsRouter.get('/', async (req, res) => {
         lease: {
           include: {
             tenant: true,
-            unit: true
-          }
+            unit: true,
+          },
         },
-        payments: true
+        payments: true,
       },
-      orderBy: { dueDate: 'desc' }
-    })
+      orderBy: { dueDate: 'desc' },
+    });
 
-    // Transforms the data to a frontend-friendly summary format
-    const summaries = bills.map(bill => ({
+    const summaries = bills.map((bill) => ({
       id: bill.id,
       amount: bill.amount,
       dueDate: bill.dueDate,
       paid: bill.paid,
+      reminderSent: bill.reminderSent,
+      reminderSentAt: bill.reminderSentAt,
       payments: bill.payments,
       lease: {
         id: bill.lease?.id,
         startDate: bill.lease?.startDate,
         endDate: bill.lease?.endDate,
         monthlyRent: bill.lease?.monthlyRent,
-        tenant: bill.lease?.tenant ? {
-          id: bill.lease.tenant.id,
-          name: bill.lease.tenant.name,
-          email: bill.lease.tenant.email,
-          phone: bill.lease.tenant.phone
-        } : null,
-        unit: bill.lease?.unit ? {
-          id: bill.lease.unit.id,
-          unitNumber: bill.lease.unit.unitNumber,
-          status: bill.lease.unit.status
-        } : null
-      }
-    }))
+        tenant: bill.lease?.tenant
+          ? {
+              id: bill.lease.tenant.id,
+              name: bill.lease.tenant.name,
+              email: bill.lease.tenant.email,
+              phone: bill.lease.tenant.phone,
+            }
+          : null,
+        unit: bill.lease?.unit
+          ? {
+              id: bill.lease.unit.id,
+              unitNumber: bill.lease.unit.unitNumber,
+              status: bill.lease.unit.status,
+            }
+          : null,
+      },
+    }));
 
-    res.json(summaries)
+    res.json(summaries);
   } catch (e) {
-    console.error('Error fetching rent bills:', e)
-    res.status(500).json({ error: e.message })
+    console.error('Error fetching rent bills:', e);
+    res.status(500).json({ error: e.message });
   }
-})
+});
 
-
-// Get single bill with summary
+// Get a single rent bill summary
 rentBillsRouter.get('/:id', async (req, res) => {
   try {
-    const id = Number(req.params.id)
+    const id = Number(req.params.id);
 
     const bill = await prisma.rentBill.findUnique({
       where: { id },
@@ -66,15 +70,15 @@ rentBillsRouter.get('/:id', async (req, res) => {
         lease: {
           include: {
             tenant: true,
-            unit: true
-          }
+            unit: true,
+          },
         },
-        payments: true
-      }
-    })
+        payments: true,
+      },
+    });
 
     if (!bill) {
-      return res.status(404).json({ error: 'Rent bill not found' })
+      return res.status(404).json({ error: 'Rent bill not found' });
     }
 
     const summary = {
@@ -82,105 +86,112 @@ rentBillsRouter.get('/:id', async (req, res) => {
       amount: bill.amount,
       dueDate: bill.dueDate,
       paid: bill.paid,
+      reminderSent: bill.reminderSent,
+      reminderSentAt: bill.reminderSentAt,
       payments: bill.payments,
       lease: {
         id: bill.lease?.id,
         startDate: bill.lease?.startDate,
         endDate: bill.lease?.endDate,
         monthlyRent: bill.lease?.monthlyRent,
-        tenant: bill.lease?.tenant ? {
-          id: bill.lease.tenant.id,
-          name: bill.lease.tenant.name,
-          email: bill.lease.tenant.email,
-          phone: bill.lease.tenant.phone
-        } : null,
-        unit: bill.lease?.unit ? {
-          id: bill.lease.unit.id,
-          unitNumber: bill.lease.unit.unitNumber,
-          status: bill.lease.unit.status
-        } : null
-      }
-    }
+        tenant: bill.lease?.tenant
+          ? {
+              id: bill.lease.tenant.id,
+              name: bill.lease.tenant.name,
+              email: bill.lease.tenant.email,
+              phone: bill.lease.tenant.phone,
+            }
+          : null,
+        unit: bill.lease?.unit
+          ? {
+              id: bill.lease.unit.id,
+              unitNumber: bill.lease.unit.unitNumber,
+              status: bill.lease.unit.status,
+            }
+          : null,
+      },
+    };
 
-    res.json(summary)
+    res.json(summary);
   } catch (e) {
-    console.error('Error fetching rent bill:', e)
-    res.status(500).json({ error: e.message })
+    console.error('Error fetching rent bill:', e);
+    res.status(500).json({ error: e.message });
   }
-})
+});
 
-
-// Create a bill
+// Create a new rent bill
 rentBillsRouter.post('/', async (req, res) => {
   try {
-    const { leaseId, dueDate } = req.body
+    const { leaseId, dueDate } = req.body;
 
-    // Validate input
     if (!leaseId || !dueDate) {
-      return res.status(400).json({ error: 'leaseId and dueDate are required' })
+      return res.status(400).json({ error: 'leaseId and dueDate are required' });
     }
 
-    // Fetch lease to get monthlyRent (and verify it exists)
     const lease = await prisma.lease.findUnique({
       where: { id: Number(leaseId) },
-      include: { tenant: true, unit: true } // return details later
-    })
+      include: { tenant: true, unit: true },
+    });
 
     if (!lease) {
-      return res.status(404).json({ error: 'Lease not found' })
+      return res.status(404).json({ error: 'Lease not found' });
     }
 
-    // Create rent bill using lease.monthlyRent
     const bill = await prisma.rentBill.create({
       data: {
         leaseId: lease.id,
-        amount: lease.monthlyRent, 
-        dueDate: new Date(dueDate)
-      }
-    })
+        amount: lease.monthlyRent,
+        dueDate: new Date(dueDate),
+        paid: false,
+        reminderSent: false,
+        reminderSentAt: null,
+      },
+    });
 
-    // Return rent bill summary
-    const summary = await getRentBillSummary(bill.id)
-    res.status(201).json(summary)
+    const summary = await getRentBillSummary(bill.id);
+    res.status(201).json(summary);
   } catch (e) {
-    console.error('Error creating rent bill:', e)
-    res.status(500).json({ error: e.message })
+    console.error('Error creating rent bill:', e);
+    res.status(500).json({ error: e.message });
   }
-})
+});
 
-// Update a bill
+// Update rent bill (amount or dueDate)
 rentBillsRouter.put('/:id', async (req, res) => {
   try {
-    const id = Number(req.params.id)
-    const { amount, dueDate } = req.body
+    const id = Number(req.params.id);
+    const { amount, dueDate, paid } = req.body;
 
     await prisma.rentBill.update({
       where: { id },
       data: {
         amount: amount !== undefined ? Number(amount) : undefined,
-        dueDate: dueDate ? new Date(dueDate) : undefined
-      }
-    })
+        dueDate: dueDate ? new Date(dueDate) : undefined,
+        paid: paid !== undefined ? Boolean(paid) : undefined,
+      },
+    });
 
-    const summary = await getRentBillSummary(id)
-    res.json(summary)
+    const summary = await getRentBillSummary(id);
+    res.json(summary);
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    console.error('Error updating rent bill:', e);
+    res.status(500).json({ error: e.message });
   }
-})
+});
 
-// Delete a bill (and its payments)
+// Delete rent bill (and its payments)
 rentBillsRouter.delete('/:id', async (req, res) => {
   try {
-    const id = Number(req.params.id)
+    const id = Number(req.params.id);
 
-    await prisma.payment.deleteMany({ where: { rentBillId: id } })
-    await prisma.rentBill.delete({ where: { id } })
+    await prisma.payment.deleteMany({ where: { rentBillId: id } });
+    await prisma.rentBill.delete({ where: { id } });
 
-    res.json({ message: 'Rent bill and its payments deleted' })
+    res.json({ message: 'Rent bill and its payments deleted' });
   } catch (e) {
-    res.status(500).json({ error: e.message })
+    console.error('Error deleting rent bill:', e);
+    res.status(500).json({ error: e.message });
   }
-})
+});
 
-module.exports = rentBillsRouter
+module.exports = rentBillsRouter;

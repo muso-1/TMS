@@ -54,7 +54,8 @@ model RentBill {
   amount  Float
   dueDate DateTime
   paid    Boolean  @default(false)
-
+  reminderSent Boolean   @default(false)
+  reminderSentAt DateTime?
   leaseId Int
   lease   Lease   @relation(fields: [leaseId], references: [id])
 
@@ -92,6 +93,8 @@ model WaterBill {
   unitsUsed       Int
   amount          Float
   dueDate         DateTime
+  reminderSent Boolean   @default(false)
+  reminderSentAt DateTime?
   status          String   @default("pending")
   createdAt       DateTime @default(now())
 }

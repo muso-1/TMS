@@ -47,7 +47,6 @@ export default function Dashboard() {
         <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,tenant:true}))}>Add Tenant</button>
         <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,unit:true}))}>Add Unit</button>
         <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,water:true}))}>Record Water Reading</button>
-        <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,rent:true}))}>Record Rent</button>
         <button className="text-black px-3 py-2 rounded" onClick={()=>setOpen(o=>({...o,assign:true}))}>Assign Unit to Tenant</button>
         {/* Send reminders actions can be wired when reminder endpoints exist */}
       </div>
@@ -60,9 +59,6 @@ export default function Dashboard() {
       </Modal>
       <Modal title="Create Water Bill" open={open.water} onClose={()=>setOpen(o=>({...o,water:false}))}>
         <WaterBillForm onClose={()=>setOpen(o=>({...o,water:false}))} />
-      </Modal>
-      <Modal title="Create Rent Bill" open={open.rent} onClose={()=>setOpen(o=>({...o,rent:false}))}>
-        <RentBillForm onClose={()=>setOpen(o=>({...o,rent:false}))} />
       </Modal>
       <Modal title="Assign Tenant to Unit" open={open.assign} onClose={()=>setOpen(o=>({...o,assign:false}))}>
         <AssignTenantForm tenants={tenants} units={units} onClose={()=>setOpen(o=>({...o,assign:false}))} />

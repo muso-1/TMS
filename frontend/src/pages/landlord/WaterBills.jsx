@@ -23,7 +23,8 @@ export default function WaterBills() {
   if (isLoading) return <div>Loading…</div>
   return (
     <div className="space-y-4">
-      <button className="bg-black text-white px-3 py-2 rounded" onClick={()=>setOpen(true)}>Create Water Bill</button>
+      <button className="bg-black text-black
+       px-3 py-2 rounded" onClick={()=>setOpen(true)}>Create Water Bill</button>
       <Table columns={columns} data={bills} />
       <Modal title="Create Water Bill" open={open} onClose={()=>setOpen(false)}>
         <WaterBillForm onClose={()=>setOpen(false)} />
