@@ -14,35 +14,19 @@ export async function sendBillReminder(billType, options = {}) {
 
   // Determine which bills to send reminders for
   if (onlyNewBills && newBillIds.length > 0) {
-    // Send only newly created bills
     bills = await prisma[`${billType}Bill`].findMany({
       where: { id: { in: newBillIds } },
-      include:
-        billType === 'rent'
-          ? { tenant: true }
-          : { tenant: true },
+      include: { tenant: true },
     });
   } else {
-    // Default: all unpaid or pending bills that haven’t been reminded yet
     const filters =
       billType === 'rent'
-        ? {
-            paid: false,
-            reminderSent: false,
-            dueDate: { lte: new Date() },
-          }
-        : {
-            status: { not: 'paid' },
-            reminderSent: false,
-            dueDate: { lte: new Date() },
-          };
+        ? { paid: false, reminderSent: false, dueDate: { lte: new Date() } }
+        : { status: { not: 'paid' }, reminderSent: false, dueDate: { lte: new Date() } };
 
     bills = await prisma[`${billType}Bill`].findMany({
       where: filters,
-      include:
-        billType === 'rent'
-          ? { tenant: true }
-          : { tenant: true },
+      include: { tenant: true },
     });
   }
 
@@ -53,34 +37,69 @@ export async function sendBillReminder(billType, options = {}) {
 
   console.log(`Preparing to send ${bills.length} ${billType} reminders...`);
 
-  // Setup transporter
+  // Setup email transporter
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
   });
 
-  // Send reminders
+  // Process each bill
   for (const bill of bills) {
     const tenant = bill.tenant;
-
     if (!tenant?.email) {
       console.warn(`Skipping ${billType} bill #${bill.id}: no tenant email.`);
       continue;
     }
 
+    // Find unpaid past bills for this tenant (excluding current one)
+    const unpaidBills = await prisma[`${billType}Bill`].findMany({
+      where:
+        billType === 'rent'
+          ? {
+              tenantId: tenant.id,
+              paid: false,
+              id: { not: bill.id },
+            }
+          : {
+              tenantId: tenant.id,
+              status: { not: 'paid' },
+              id: { not: bill.id },
+            },
+    });
+
+    const previousUnpaidTotal = unpaidBills.reduce((sum, b) => sum + (b.amount || 0), 0);
+    const totalDue = bill.amount + previousUnpaidTotal;
+
+    // Compose message dynamically
     const subject =
       billType === 'rent'
         ? 'Rent Payment Reminder'
         : 'Water Bill Payment Reminder';
 
-    const message =
+    const messageLines = [
+      `Dear ${tenant.name},`,
+      ``,
       billType === 'rent'
-        ? `Dear ${tenant.name}, your rent of Ksh ${bill.amount} was due on ${new Date(
+        ? `Your rent of Ksh ${bill.amount.toLocaleString()} was due on ${new Date(
             bill.dueDate
-          ).toLocaleDateString()}. Please make payment soon.`
-        : `Dear ${tenant.name}, your water bill of Ksh ${bill.amount} is due on ${new Date(
+          ).toLocaleDateString()}.`
+        : `Your water bill of Ksh ${bill.amount.toLocaleString()} is due on ${new Date(
             bill.dueDate
-          ).toLocaleDateString()}. Kindly settle soon.`;
+          ).toLocaleDateString()}.`,
+    ];
+
+    if (previousUnpaidTotal > 0) {
+      messageLines.push(
+        `You also have outstanding previous bills totaling Ksh ${previousUnpaidTotal.toLocaleString()}.`
+      );
+    }
+
+    messageLines.push(``);
+    messageLines.push(`Total amount due: Ksh ${totalDue.toLocaleString()}.`);
+    messageLines.push(`Please make payment as soon as possible.`);
+    messageLines.push(`Thank you.`);
+
+    const message = messageLines.join('\n');
 
     try {
       await transporter.sendMail({
@@ -98,9 +117,14 @@ export async function sendBillReminder(billType, options = {}) {
         },
       });
 
-      console.log(`Sent ${billType} reminder to ${tenant.email}`);
+      console.log(
+        `Sent ${billType} reminder to ${tenant.email} (Total due: Ksh ${totalDue})`
+      );
     } catch (err) {
-      console.error(`Failed to send ${billType} reminder to ${tenant.email}:`, err.message);
+      console.error(
+        `Failed to send ${billType} reminder to ${tenant.email}:`,
+        err.message
+      );
     }
   }
 
