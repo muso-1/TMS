@@ -11,7 +11,7 @@ export default function Payments({ rentBillId }) {
   const { data, isLoading } = useQuery({
     queryKey: rentBillId ? ['payments', rentBillId] : ['payments'],
     queryFn: () => listPayments({ rentBillId }),
-    enabled: true, // always run, regardless of rentBillId
+    enabled: true,
   })
 
   const payments = data?.items ?? []
@@ -19,13 +19,15 @@ export default function Payments({ rentBillId }) {
   const [editing, setEditing] = useState(null)
 
   const handleDelete = async (id) => {
-    if (confirm('Are you sure?')) {
+    if (confirm('Are you sure you want to delete this payment?')) {
       await deletePayment(id)
       queryClient.invalidateQueries(rentBillId ? ['payments', rentBillId] : ['payments'])
     }
   }
 
   const columns = [
+    { key: 'tenant', header: 'Tenant', cell: (p) => p.tenant?.name || '—' },
+    { key: 'unit', header: 'Unit', cell: (p) => p.rentBill?.lease?.unit?.unitNumber || '—' },
     { key: 'amount', header: 'Amount', cell: (p) => formatMoney(p.amount) },
     { key: 'paidAt', header: 'Paid At', cell: (p) => formatDate(p.paidAt) },
     { key: 'method', header: 'Method' },
@@ -58,8 +60,8 @@ export default function Payments({ rentBillId }) {
 
   const dataWithActions = payments.map((p) => ({
     ...p,
-    onEdit: (payment) => {
-      setEditing(payment)
+    onEdit: () => {
+      setEditing(p)
       setOpen(true)
     },
     onDelete: () => handleDelete(p.id),

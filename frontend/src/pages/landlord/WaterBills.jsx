@@ -76,7 +76,7 @@ export default function WaterBills() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <button
-          className="bg-black text-white px-3 py-2 rounded"
+          className="bg-black text-black px-3 py-2 rounded"
           onClick={() => setOpen(true)}
         >
           Create Water Bill
@@ -86,7 +86,7 @@ export default function WaterBills() {
         <button
           onClick={handleSendBulkReminders}
           disabled={loadingReminder}
-          className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700"
+          className="bg-blue-600 text-black px-3 py-2 rounded hover:bg-blue-700"
         >
           {loadingReminder ? 'Sending...' : 'Send All Reminders'}
         </button>

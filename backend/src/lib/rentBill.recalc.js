@@ -7,6 +7,11 @@ const prisma = require('../lib/prisma');
  * - Returns totals and payment status summary
  */
 async function recalcRentBillPaidStatus(rentBillId) {
+  if (!rentBillId) {
+    console.warn('⚠️ recalcRentBillPaidStatus called without billId');
+    return;
+  }
+
   // Fetch bill with lease info
   const bill = await prisma.rentBill.findUnique({
     where: { id: rentBillId },

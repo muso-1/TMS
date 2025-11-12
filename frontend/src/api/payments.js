@@ -1,14 +1,48 @@
 import { api } from './client'
 
-// List payments (optionally filtered by rentBillId)
-export const listPayments = ({ rentBillId, page = 1, pageSize = 50 }) =>
+// List payments (optionally filtered by tenant or bill)
+export const listPayments = ({ tenantId, rentBillId, waterBillId, page = 1, pageSize = 50 } = {}) =>
   api
-    .get('/api/payments', { params: { rentBillId, page, pageSize } })
+    .get('/api/payments', { params: { tenantId, rentBillId, waterBillId, page, pageSize } })
     .then(r => r.data)
 
 // Create payment
-export const createPayment = (data) =>
-  api.post('/api/payments', data).then(r => r.data)
+// Supports rent bill, water bill, or tenant-wide allocation
+export const createPayment = async ({
+  tenantId,
+  rentBillId,
+  waterBillId,
+  amount,
+  paidAt,
+  method,
+  reference,
+  note
+}) => {
+  if (!tenantId) {
+    // Optional helper: auto-derive tenantId if rentBillId or waterBillId provided
+    if (rentBillId) {
+      const bill = await api.get(`/api/rentBills/${rentBillId}`).then(r => r.data)
+      tenantId = bill?.lease?.tenant?.id
+    } else if (waterBillId) {
+      const bill = await api.get(`/api/waterBills/${waterBillId}`).then(r => r.data)
+      tenantId = bill?.tenantId
+    }
+    if (!tenantId) throw new Error('Unable to determine tenant for payment')
+  }
+
+  return api
+    .post('/api/payments', {
+      tenantId,
+      rentBillId,
+      waterBillId,
+      amount,
+      paidAt,
+      method,
+      reference,
+      note
+    })
+    .then(r => r.data)
+}
 
 // Update payment
 export const updatePayment = (id, data) =>

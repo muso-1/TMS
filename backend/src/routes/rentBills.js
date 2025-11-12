@@ -5,7 +5,7 @@ const { getRentBillSummary } = require('../lib/rentBill.summary');
 const prisma = new PrismaClient();
 const rentBillsRouter = Router();
 
-// 🧾 List all rent bills with summaries
+// List all rent bills with summaries
 rentBillsRouter.get('/', async (req, res) => {
   try {
     const bills = await prisma.rentBill.findMany({
@@ -16,7 +16,9 @@ rentBillsRouter.get('/', async (req, res) => {
             unit: true,
           },
         },
-        payments: true,
+        payments: {
+          include: { tenant: true }
+        },
       },
       orderBy: { dueDate: 'desc' },
     });
@@ -28,7 +30,22 @@ rentBillsRouter.get('/', async (req, res) => {
       paid: bill.paid,
       reminderSent: bill.reminderSent,
       reminderSentAt: bill.reminderSentAt,
-      payments: bill.payments,
+      payments: bill.payments.map(p => ({
+        id: p.id,
+        amount: p.amount,
+        paidAt: p.paidAt,
+        method: p.method,
+        reference: p.reference,
+        note: p.note,
+        tenant: p.tenant
+          ? {
+              id: p.tenant.id,
+              name: p.tenant.name,
+              email: p.tenant.email,
+              phone: p.tenant.phone,
+            }
+          : null
+      })),
       lease: {
         id: bill.lease?.id,
         startDate: bill.lease?.startDate,
@@ -68,18 +85,15 @@ rentBillsRouter.get('/:id', async (req, res) => {
       where: { id },
       include: {
         lease: {
-          include: {
-            tenant: true,
-            unit: true,
-          },
+          include: { tenant: true, unit: true },
         },
-        payments: true,
+        payments: {
+          include: { tenant: true }
+        },
       },
     });
 
-    if (!bill) {
-      return res.status(404).json({ error: 'Rent bill not found' });
-    }
+    if (!bill) return res.status(404).json({ error: 'Rent bill not found' });
 
     const summary = {
       id: bill.id,
@@ -88,7 +102,22 @@ rentBillsRouter.get('/:id', async (req, res) => {
       paid: bill.paid,
       reminderSent: bill.reminderSent,
       reminderSentAt: bill.reminderSentAt,
-      payments: bill.payments,
+      payments: bill.payments.map(p => ({
+        id: p.id,
+        amount: p.amount,
+        paidAt: p.paidAt,
+        method: p.method,
+        reference: p.reference,
+        note: p.note,
+        tenant: p.tenant
+          ? {
+              id: p.tenant.id,
+              name: p.tenant.name,
+              email: p.tenant.email,
+              phone: p.tenant.phone,
+            }
+          : null
+      })),
       lease: {
         id: bill.lease?.id,
         startDate: bill.lease?.startDate,
@@ -133,9 +162,7 @@ rentBillsRouter.post('/', async (req, res) => {
       include: { tenant: true, unit: true },
     });
 
-    if (!lease) {
-      return res.status(404).json({ error: 'Lease not found' });
-    }
+    if (!lease) return res.status(404).json({ error: 'Lease not found' });
 
     const bill = await prisma.rentBill.create({
       data: {
@@ -156,7 +183,7 @@ rentBillsRouter.post('/', async (req, res) => {
   }
 });
 
-// Update rent bill (amount or dueDate)
+// Update rent bill (amount, dueDate, paid)
 rentBillsRouter.put('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -179,7 +206,7 @@ rentBillsRouter.put('/:id', async (req, res) => {
   }
 });
 
-// Delete rent bill (and its payments)
+// Delete rent bill and its payments
 rentBillsRouter.delete('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { listRentBills, deleteRentBill } from '../../api/rentBills'
-import { sendReminder, sendBulkReminders } from '../../api/reminders' //reminders import
+import { sendReminder, sendBulkReminders } from '../../api/reminders'
 import Table from '../../components/ui/Table'
 import Modal from '../../components/ui/Modal'
 import RentBillForm from '../../components/forms/RentBillForm'
@@ -10,6 +10,8 @@ import { Link } from 'react-router-dom'
 
 export default function Rent() {
   const queryClient = useQueryClient()
+
+  // Fetch rent bills
   const { data: bills = [], isLoading } = useQuery({
     queryKey: ['rent-bills'],
     queryFn: listRentBills,
@@ -19,9 +21,9 @@ export default function Rent() {
   const [editing, setEditing] = useState(null)
   const [loadingReminder, setLoadingReminder] = useState(false)
 
-  // Delete handler
+  // Delete rent bill
   const handleDelete = async (id) => {
-    if (confirm('Are you sure?')) {
+    if (confirm('Are you sure you want to delete this rent bill?')) {
       await deleteRentBill(id)
       queryClient.invalidateQueries(['rent-bills'])
     }
@@ -58,18 +60,36 @@ export default function Rent() {
     }
   }
 
+  // Table columns
   const columns = [
     { key: 'tenant', header: 'Tenant', cell: (r) => r.lease.tenant?.name || '—' },
     { key: 'amount', header: 'Amount', cell: (r) => formatMoney(r.amount) },
-    { key: 'dueDate', header: 'Due', cell: (r) => formatDate(r.dueDate) },
+    {
+      key: 'totalPaid',
+      header: 'Total Paid',
+      cell: (r) =>
+        formatMoney(r.payments?.reduce((sum, p) => sum + p.amount, 0) || 0),
+    },
+    {
+      key: 'balance',
+      header: 'Balance',
+      cell: (r) => {
+        const totalPaid = r.payments?.reduce((sum, p) => sum + p.amount, 0) || 0
+        return formatMoney(r.amount - totalPaid)
+      },
+    },
+    { key: 'dueDate', header: 'Due Date', cell: (r) => formatDate(r.dueDate) },
     { key: 'status', header: 'Status', cell: (r) => (r.paid ? 'Paid' : 'Pending') },
     {
       key: 'actions',
       header: 'Actions',
       cell: (r) => (
         <div className="flex gap-3">
-          <Link to={`/rent-bills/${r.id}`} className="text-blue-600 hover:underline">
-            View
+          <Link
+            to={`/rent-bills/${r.id}`}
+            className="text-blue-600 hover:underline"
+          >
+            Payment Details
           </Link>
           <button
             onClick={() => handleSendReminder(r.id)}
@@ -104,7 +124,7 @@ export default function Rent() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <button
-          className="bg-black text-white px-3 py-2 rounded"
+          className="bg-black text-black px-3 py-2 rounded"
           onClick={() => {
             setEditing(null)
             setOpen(true)
@@ -113,11 +133,10 @@ export default function Rent() {
           Create Rent Bill
         </button>
 
-        {/* Bulk Reminder Button */}
         <button
           onClick={handleSendBulkReminders}
           disabled={loadingReminder}
-          className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700"
+          className="bg-blue-600 text-black px-3 py-2 rounded hover:bg-blue-700"
         >
           {loadingReminder ? 'Sending...' : 'Send All Reminders'}
         </button>

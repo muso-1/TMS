@@ -1,76 +1,66 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createPayment, updatePayment } from '../../api/payments'
-import { listRentBills } from '../../api/rentBills'
-import { formatMoney, formatDate } from '../utils/format'
+import { createPayment } from '../../api/payments'
+import { listTenants } from '../../api/tenants'
 
-export default function PaymentForm({ onClose, payment }) {
+export default function PaymentForm({ onClose }) {
   const queryClient = useQueryClient()
 
-  // controlled state
-  const [rentBillId, setRentBillId] = useState(payment?.rentBillId || '')
-  const [amount, setAmount] = useState(payment?.amount || '')
-  const [paidAt, setPaidAt] = useState(
-    payment?.paidAt ? new Date(payment.paidAt).toISOString().slice(0, 10) : ''
-  )
-  const [method, setMethod] = useState(payment?.method || '')
-  const [reference, setReference] = useState(payment?.reference || '')
-  const [note, setNote] = useState(payment?.note || '')
+  const [tenantId, setTenantId] = useState('')
+  const [amount, setAmount] = useState('')
+  const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10))
+  const [method, setMethod] = useState('')
+  const [reference, setReference] = useState('')
+  const [note, setNote] = useState('')
 
-  // fetch bills for dropdown
-  const { data: bills = [], isLoading: billsLoading } = useQuery({
-    queryKey: ['rent-bills'],
-    queryFn: listRentBills,
+  // Fetch tenants for dropdown
+  const { data: tenants = [], isLoading: tenantsLoading } = useQuery({
+    queryKey: ['tenants'],
+    queryFn: listTenants
   })
 
   const mutation = useMutation({
-  mutationFn: payment
-    ? (data) => updatePayment(payment.id, data)
-    : createPayment,
-  onSuccess: (data) => {
-    console.log("✅ Mutation success:", data)
-    queryClient.invalidateQueries(['payments'])
-    queryClient.invalidateQueries(['rent-bills'])
-    onClose()
-  },
-  onError: (error) => {
-    console.error("❌ Mutation error:", error)
-  },
-})
+    mutationFn: createPayment,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['payments'])
+      queryClient.invalidateQueries(['tenants'])
+      onClose()
+    },
+    onError: (error) => {
+      console.error('❌ Payment creation failed:', error)
+    }
+  })
 
   const handleSubmit = (e) => {
     e.preventDefault()
-
-    console.log("Submitting", { rentBillId, amount, paidAt, method, reference, note })
-
     mutation.mutate({
-      rentBillId: Number(rentBillId),
+      tenantId: Number(tenantId),
       amount: Number(amount),
       paidAt,
       method,
       reference,
-      note,
+      note
     })
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Rent Bill selector */}
+      {/* Tenant selector */}
       <div>
-        <label className="block mb-1">Rent Bill</label>
-        {billsLoading ? (
-          <div>Loading bills…</div>
+        <label className="block mb-1">Tenant</label>
+        {tenantsLoading ? (
+          <div>Loading tenants…</div>
         ) : (
           <select
-            value={rentBillId}
-            onChange={(e) => setRentBillId(e.target.value)}
+            value={tenantId}
+            onChange={(e) => setTenantId(e.target.value)}
             className="border px-2 py-1 w-full"
             required
           >
-            <option value="">Select a bill</option>
-            {bills.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.tenant?.name ?? b.tenantId} — {formatMoney(b.amount)} due {formatDate(b.dueDate)}
+            <option value="">Select tenant</option>
+            {tenants.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.email})
               </option>
             ))}
           </select>
@@ -119,7 +109,7 @@ export default function PaymentForm({ onClose, payment }) {
         <label className="block mb-1">Reference</label>
         <input
           type="text"
-          placeholder="Transaction ID, Cheque No..."
+          placeholder="Transaction ID or Cheque No."
           value={reference}
           onChange={(e) => setReference(e.target.value)}
           className="border px-2 py-1 w-full"
@@ -151,7 +141,7 @@ export default function PaymentForm({ onClose, payment }) {
           type="submit"
           className="bg-black text-black px-3 py-1 rounded"
         >
-          {payment ? 'Update' : 'Create'}
+          Record Payment
         </button>
       </div>
     </form>
