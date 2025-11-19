@@ -1,44 +1,127 @@
-import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { createRentBill, updateRentBill } from '../../api/rentBills'
+import { listTenants } from '../../api/tenants'
+import { listLeases } from '../../api/leases'
+import { useState } from 'react'
+import toast from 'react-hot-toast'
 
 export default function RentBillForm({ onClose, bill }) {
-  const queryClient = useQueryClient()
-  const [tenantId, setTenantId] = useState(bill?.tenantId || '')
-  const [amount, setAmount] = useState(bill?.amount || '')
-  const [dueDate, setDueDate] = useState(bill?.dueDate ? new Date(bill.dueDate).toISOString().slice(0,10) : '')
+  const qc = useQueryClient()
+  const { register, handleSubmit, watch } = useForm()
 
-  const mutation = useMutation({
-    mutationFn: bill ? (data)=>updateRentBill(bill.id, data) : createRentBill,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['rent-bills'])
-      onClose()
-    }
+  const { data: tenants = [] } = useQuery({
+    queryKey: ['tenants'],
+    queryFn: listTenants,
   })
 
-  const handleSubmit = e => {
-    e.preventDefault()
-    mutation.mutate({ tenantId, amount, dueDate })
+  // -----------------------------
+  // For CREATE: select tenant → load their leases
+  // -----------------------------
+  const selectedTenantId = watch('tenantId')
+  const { data: leases = [] } = useQuery({
+    queryKey: ['leases', selectedTenantId],
+    queryFn: () => listLeases(selectedTenantId),
+    enabled: !!selectedTenantId,
+  })
+
+  // -----------------------------
+  // Mutation
+  // -----------------------------
+  const { mutate, isLoading } = useMutation({
+    mutationFn: bill
+      ? (data) => updateRentBill(bill.id, data)
+      : createRentBill,
+
+    onSuccess: () => {
+      toast.success(bill ? 'Rent bill updated' : 'Rent bill created')
+      qc.invalidateQueries(['rent-bills'])
+      onClose?.()
+    },
+    onError: () => toast.error('Something went wrong'),
+  })
+
+  // -----------------------------
+  // Submit handler
+  // -----------------------------
+  const onSubmit = (d) => {
+    if (bill) {
+      // UPDATE MODE
+      mutate({
+        amount: Number(d.amount),
+        dueDate: d.dueDate,
+      })
+    } else {
+      // CREATE MODE — requires leaseId + dueDate
+      mutate({
+        leaseId: Number(d.leaseId),
+        dueDate: d.dueDate,
+      })
+    }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="block">Tenant ID</label>
-        <input type="number" value={tenantId} onChange={e=>setTenantId(e.target.value)} className="border px-2 py-1 w-full" required />
-      </div>
-      <div>
-        <label className="block">Amount</label>
-        <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} className="border px-2 py-1 w-full" required />
-      </div>
-      <div>
-        <label className="block">Due Date</label>
-        <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} className="border px-2 py-1 w-full" required />
-      </div>
-      <div className="flex justify-end space-x-2">
-        <button type="button" onClick={onClose} className="px-3 py-1 border rounded">Cancel</button>
-        <button type="submit" className="bg-black text-white px-3 py-1 rounded">{bill ? 'Update' : 'Create'}</button>
-      </div>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+
+      {!bill && (
+        <>
+          {/* Tenant Select */}
+          <select
+            className="w-full border p-2 rounded"
+            {...register('tenantId', { required: true })}
+          >
+            <option value="">Select tenant</option>
+            {tenants.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Lease Select (auto-populated after selecting tenant) */}
+          <select
+            className="w-full border p-2 rounded"
+            {...register('leaseId', { required: true })}
+            disabled={!selectedTenantId}
+          >
+            <option value="">Select lease</option>
+            {leases.map((l) => (
+              <option key={l.id} value={l.id}>
+                Unit {l.unit?.name} — KES {l.monthlyRent}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+
+      {/* Amount only editable when updating */}
+      {bill && (
+        <input
+          type="number"
+          className="w-full border p-2 rounded"
+          placeholder="Amount"
+          defaultValue={bill.amount}
+          {...register('amount', { required: true })}
+        />
+      )}
+
+      <input
+        type="date"
+        className="w-full border p-2 rounded"
+        defaultValue={
+          bill?.dueDate
+            ? new Date(bill.dueDate).toISOString().slice(0, 10)
+            : ''
+        }
+        {...register('dueDate', { required: true })}
+      />
+
+      <button
+        disabled={isLoading}
+        className="bg-black text-black px-4 py-2 rounded"
+      >
+        {isLoading ? 'Saving…' : bill ? 'Update' : 'Save'}
+      </button>
     </form>
   )
 }

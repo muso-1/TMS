@@ -6,22 +6,32 @@ import PaymentForm from '../../components/forms/PaymentForm'
 import { useState } from 'react'
 import { formatDate, formatMoney } from '../../components/utils/format'
 
-export default function Payments({ rentBillId }) {
+export default function Payments() {
   const queryClient = useQueryClient()
+
+  // Filter state
+  const [filters, setFilters] = useState({
+    tenantId: '',
+    rentBillId: '',
+    waterBillId: '',
+    search: ''
+  })
+
+  // Fetch payments with current filters
   const { data, isLoading } = useQuery({
-    queryKey: rentBillId ? ['payments', rentBillId] : ['payments'],
-    queryFn: () => listPayments({ rentBillId }),
-    enabled: true,
+    queryKey: ['payments', filters],
+    queryFn: () => listPayments(filters),
   })
 
   const payments = data?.items ?? []
+
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
 
   const handleDelete = async (id) => {
     if (confirm('Are you sure you want to delete this payment?')) {
       await deletePayment(id)
-      queryClient.invalidateQueries(rentBillId ? ['payments', rentBillId] : ['payments'])
+      queryClient.invalidateQueries(['payments'])
     }
   }
 
@@ -58,21 +68,50 @@ export default function Payments({ rentBillId }) {
     },
   ]
 
-  const dataWithActions = payments.map((p) => ({
-    ...p,
-    onEdit: () => {
-      setEditing(p)
-      setOpen(true)
-    },
-    onDelete: () => handleDelete(p.id),
-  }))
-
   if (isLoading) return <div>Loading…</div>
 
   return (
     <div className="space-y-4">
+      {/* Search / Filter Controls */}
+      <div className="flex gap-2 items-center">
+        <input
+          type="text"
+          placeholder="Search by tenant, reference, or note"
+          value={filters.search}
+          onChange={(e) =>
+            setFilters((prev) => ({ ...prev, search: e.target.value }))
+          }
+          className="border px-2 py-1 rounded w-64"
+        />
+        <input
+          type="number"
+          placeholder="Rent Bill ID"
+          value={filters.rentBillId}
+          onChange={(e) =>
+            setFilters((prev) => ({ ...prev, rentBillId: e.target.value }))
+          }
+          className="border px-2 py-1 rounded w-32"
+        />
+        <input
+          type="number"
+          placeholder="Water Bill ID"
+          value={filters.waterBillId}
+          onChange={(e) =>
+            setFilters((prev) => ({ ...prev, waterBillId: e.target.value }))
+          }
+          className="border px-2 py-1 rounded w-32"
+        />
+        <button
+          className="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300"
+          onClick={() => setFilters({ tenantId: '', rentBillId: '', waterBillId: '', search: '' })}
+        >
+          Reset
+        </button>
+      </div>
+
+      {/* Add button */}
       <button
-        className="bg-black text-black px-3 py-2 rounded"
+        className="bg-black text-white px-3 py-2 rounded"
         onClick={() => {
           setEditing(null)
           setOpen(true)
@@ -81,18 +120,16 @@ export default function Payments({ rentBillId }) {
         Add Payment
       </button>
 
-      <Table columns={columns} data={dataWithActions} />
+      {/* Table */}
+      <Table columns={columns} data={payments} />
 
+      {/* Modal */}
       <Modal
         title={editing ? 'Edit Payment' : 'Add Payment'}
         open={open}
         onClose={() => setOpen(false)}
       >
-        <PaymentForm
-          onClose={() => setOpen(false)}
-          payment={editing}
-          rentBillId={rentBillId}
-        />
+        <PaymentForm onClose={() => setOpen(false)} payment={editing} />
       </Modal>
     </div>
   )

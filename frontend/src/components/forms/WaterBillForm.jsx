@@ -26,7 +26,7 @@ export default function WaterBillForm({ onClose }) {
       </select>
       <input type="number" className="w-full border p-2 rounded" placeholder="Current Reading" {...register('currentReading',{required:true})} />
       <input type="date" className="w-full border p-2 rounded" {...register('dueDate',{required:true})} />
-      <button disabled={isLoading} className="bg-black text-white px-4 py-2 rounded">{isLoading?'Saving…':'Save'}</button>
+      <button disabled={isLoading} className="bg-black text-black px-4 py-2 rounded">{isLoading?'Saving…':'Save'}</button>
     </form>
   )
 }

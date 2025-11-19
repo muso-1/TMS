@@ -1,27 +1,37 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { listRentBills, deleteRentBill } from '../../api/rentBills'
+import { listRentBills, deleteRentBill, getRentBill } from '../../api/rentBills'
 import { sendReminder, sendBulkReminders } from '../../api/reminders'
 import Table from '../../components/ui/Table'
 import Modal from '../../components/ui/Modal'
 import RentBillForm from '../../components/forms/RentBillForm'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { formatDate, formatMoney } from '../../components/utils/format'
-import { Link } from 'react-router-dom'
+import { listPayments, deletePayment } from '../../api/payments'
 
 export default function Rent() {
   const queryClient = useQueryClient()
 
-  // Fetch rent bills
+  // Fetch all rent bills
   const { data: bills = [], isLoading } = useQuery({
     queryKey: ['rent-bills'],
     queryFn: listRentBills,
   })
 
+  // Create/Edit Rent Bill Modal
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [loadingReminder, setLoadingReminder] = useState(false)
 
-  // Delete rent bill
+  // Rent Bill Details Modal
+  const [openDetails, setOpenDetails] = useState(false)
+  const [selectedBillId, setSelectedBillId] = useState(null)
+
+  const { data: billDetails, isLoading: loadingBill } = useQuery({
+    queryKey: ['rent-bill', selectedBillId],
+    queryFn: () => getRentBill(selectedBillId),
+    enabled: openDetails && !!selectedBillId,
+  })
+
+  // Delete Rent Bill
   const handleDelete = async (id) => {
     if (confirm('Are you sure you want to delete this rent bill?')) {
       await deleteRentBill(id)
@@ -29,7 +39,9 @@ export default function Rent() {
     }
   }
 
-  // Send single reminder
+  // Send Reminders
+  const [loadingReminder, setLoadingReminder] = useState(false)
+
   const handleSendReminder = async (billId) => {
     try {
       setLoadingReminder(true)
@@ -44,7 +56,6 @@ export default function Rent() {
     }
   }
 
-  // Send bulk reminders
   const handleSendBulkReminders = async () => {
     if (!confirm('Send reminders for all pending rent bills?')) return
     try {
@@ -60,7 +71,7 @@ export default function Rent() {
     }
   }
 
-  // Table columns
+  // Rent Bills Table Columns
   const columns = [
     { key: 'tenant', header: 'Tenant', cell: (r) => r.lease.tenant?.name || '—' },
     { key: 'amount', header: 'Amount', cell: (r) => formatMoney(r.amount) },
@@ -85,12 +96,7 @@ export default function Rent() {
       header: 'Actions',
       cell: (r) => (
         <div className="flex gap-3">
-          <Link
-            to={`/rent-bills/${r.id}`}
-            className="text-blue-600 hover:underline"
-          >
-            Payment Details
-          </Link>
+        
           <button
             onClick={() => handleSendReminder(r.id)}
             disabled={loadingReminder}
@@ -98,6 +104,7 @@ export default function Rent() {
           >
             Send Reminder
           </button>
+
           <button
             onClick={() => handleDelete(r.id)}
             className="text-red-600 hover:underline"
@@ -122,6 +129,7 @@ export default function Rent() {
 
   return (
     <div className="space-y-4">
+      {/* Create + Bulk Reminder Buttons */}
       <div className="flex justify-between items-center">
         <button
           className="bg-black text-black px-3 py-2 rounded"
@@ -136,14 +144,16 @@ export default function Rent() {
         <button
           onClick={handleSendBulkReminders}
           disabled={loadingReminder}
-          className="bg-blue-600 text-black px-3 py-2 rounded hover:bg-blue-700"
+          className="bg-blue-600 text-black  px-3 py-2 rounded hover:bg-blue-700"
         >
           {loadingReminder ? 'Sending...' : 'Send All Reminders'}
         </button>
       </div>
 
+      {/* Rent Bills Table */}
       <Table columns={columns} data={dataWithActions} />
 
+      {/* Rent Bill Create/Edit Modal */}
       <Modal
         title={editing ? 'Edit Rent Bill' : 'Create Rent Bill'}
         open={open}
@@ -151,6 +161,7 @@ export default function Rent() {
       >
         <RentBillForm onClose={() => setOpen(false)} bill={editing} />
       </Modal>
+
     </div>
   )
 }
