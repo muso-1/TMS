@@ -1,43 +1,42 @@
-const prisma = require('../lib/prisma');
+const prisma = require('../lib/prisma')
 
 /**
- * Recalculates the "paid" status of a rent bill based on payments.
- * - Fetches bill, lease.monthlyRent, and total payments
- * - Updates the bill's `paid` field accordingly
- * - Returns totals and payment status summary
+ * Recalculates the "paid" status of a rent bill based on allocations.
+ * Must run inside the same transaction as payment application.
  */
-async function recalcRentBillPaidStatus(rentBillId) {
+async function recalcRentBillPaidStatus(rentBillId, tx = prisma) {
   if (!rentBillId) {
-    console.warn('⚠️ recalcRentBillPaidStatus called without billId');
-    return;
+    console.warn('recalcRentBillPaidStatus called without rentBillId')
+    return
   }
 
-  // Fetch bill with lease info
-  const bill = await prisma.rentBill.findUnique({
-    where: { id: rentBillId },
-    include: { lease: true }
+  // Fetch bill USING tx
+  const bill = await tx.rentBill.findUnique({
+    where: { id: rentBillId }
   })
 
   if (!bill) throw new Error('RentBill not found')
 
-  // Compute total payments for this bill
-  const agg = await prisma.payment.aggregate({
-    where: { rentBillId },
+  // Sum allocations USING tx (UPDATED)
+  const agg = await tx.paymentAllocation.aggregate({
+    where: {
+      billType: 'rent',
+      rentBillId: rentBillId
+    },
     _sum: { amount: true }
   })
 
   const totalPaid = agg._sum.amount ?? 0
-
-  // Use lease.monthlyRent as source of truth if present
-  const billAmount = bill.lease?.monthlyRent ?? bill.amount
-
-  // Determine if bill is fully paid
+  const billAmount = bill.amount
   const fullyPaid = totalPaid >= billAmount
 
-  // Update the bill status
-  await prisma.rentBill.update({
+  // Update bill USING tx
+  await tx.rentBill.update({
     where: { id: rentBillId },
-    data: { paid: fullyPaid }
+    data: {
+      paid: fullyPaid,
+      paidAt: fullyPaid ? new Date() : null
+    }
   })
 
   return {

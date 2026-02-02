@@ -18,6 +18,7 @@ model Tenant {
   name        String
   email       String        @unique
   phone       String
+  
   units       Unit[]
   leases      Lease[]       @relation("TenantLeases")
   waterBills  WaterBill[]
@@ -43,6 +44,7 @@ model Lease {
   tenant      Tenant   @relation("TenantLeases", fields: [tenantId], references: [id])
   unitId      Int
   unit        Unit     @relation(fields: [unitId], references: [id])
+  
   monthlyRent Float
   startDate   DateTime
   endDate     DateTime?
@@ -56,58 +58,83 @@ model RentBill {
   id              Int       @id @default(autoincrement())
   amount          Float
   dueDate         DateTime
-  paid            Boolean   @default(false)
   reminderSent    Boolean   @default(false)
   reminderSentAt  DateTime?
   leaseId         Int
   lease           Lease     @relation(fields: [leaseId], references: [id])
 
-  payments        Payment[]
+  allocations     PaymentAllocation[]
+
+  createdAt       DateTime  @default(now())
+  paid            Boolean   @default(false)
+  paidAt          DateTime?
 
   @@index([dueDate])
   @@index([leaseId])
-}
-
-model Payment {
-  id         Int       @id @default(autoincrement())
-  amount     Float
-  paidAt     DateTime  @default(now())
-  method     String?
-  reference  String?
-  note       String?
-
-  rentBillId Int?
-  rentBill   RentBill? @relation(fields: [rentBillId], references: [id])
-
-  waterBillId Int?
-  waterBill   WaterBill? @relation(fields: [waterBillId], references: [id])
-
-  tenantId   Int
-  tenant     Tenant    @relation(fields: [tenantId], references: [id])
-
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  @@index([tenantId])
-  @@index([rentBillId])
-  @@index([paidAt])
 }
 
 model WaterBill {
   id              Int      @id @default(autoincrement())
   tenantId        Int
   tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  
   previousReading Int      @default(0)
   currentReading  Int
   unitsUsed       Int
   amount          Float
   dueDate         DateTime
+
+  allocations     PaymentAllocation[]
+  
+  status          String    @default("pending")
+  paidAt          DateTime?
+  
   reminderSent    Boolean   @default(false)
   reminderSentAt  DateTime?
-  payments        Payment[]
-  status          String    @default("pending")
+  
   createdAt       DateTime  @default(now())
 }
+
+model Payment {
+  id         Int       @id @default(autoincrement())
+  tenantId   Int
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+
+  amount     Float
+  paidAt     DateTime  @default(now())
+  method     String?
+  reference  String?
+  note       String?
+
+  allocations PaymentAllocation[]
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([paidAt])
+}
+
+model PaymentAllocation {
+  id           Int      @id @default(autoincrement())
+  paymentId    Int
+  payment      Payment  @relation(fields: [paymentId], references: [id])
+
+  billType     String   // "rent" | "water" | "deposit"
+
+  rentBillId   Int?
+  rentBill     RentBill? @relation(fields: [rentBillId], references: [id])
+
+  waterBillId  Int?
+  waterBill    WaterBill? @relation(fields: [waterBillId], references: [id])
+
+  amount       Float
+  createdAt    DateTime @default(now())
+
+  @@index([paymentId])
+  @@index([billType])
+}
+
 
 model Maintenance {
   id          Int      @id @default(autoincrement())

@@ -1,17 +1,15 @@
-const prisma = require('../lib/prisma');
-const { recalcRentBillPaidStatus } = require('./rentBill.recalc')
-
+const prisma = require('../lib/prisma')
 
 /**
- * Get a rent bill with derived fields:
- * - totalPaid
- * - balance
- * - lease info (tenant + unit)
- * - payments
- * Ensures `paid` is up to date.
+ * Read-only rent bill summary
+ * - NO mutations
+ * - NO recalculation side effects
+ * - Derived values computed from allocations
  */
 async function getRentBillSummary(id) {
-  // Fetch bill with full lease context
+  if (!id) throw new Error('RentBill id is required')
+
+  // 1️⃣ Fetch rent bill with lease context
   const rentBill = await prisma.rentBill.findUnique({
     where: { id },
     include: {
@@ -20,29 +18,47 @@ async function getRentBillSummary(id) {
           tenant: true,
           unit: true
         }
-      },
-      payments: true
+      }
     }
   })
 
   if (!rentBill) throw new Error('RentBill not found')
 
-  // Ensure `paid` field is accurate
-  await recalcRentBillPaidStatus(id)
+  // 2️⃣ Fetch allocations for this bill
+  const allocations = await prisma.paymentAllocation.findMany({
+    where: {
+      billType: 'rent',
+      billId: id
+    },
+    include: {
+      payment: true
+    }
+  })
 
-  // Compute derived fields
-  const totalPaid = rentBill.payments.reduce((sum, p) => sum + p.amount, 0)
+  // 3️⃣ Derive totals
+  const totalPaid = allocations.reduce((sum, a) => sum + a.amount, 0)
   const balance = rentBill.amount - totalPaid
 
-  // Return frontend-friendly summary object
+  // 4️⃣ Return summary
   return {
     id: rentBill.id,
     amount: rentBill.amount,
     dueDate: rentBill.dueDate,
-    paid: rentBill.paid,
+    paid: rentBill.paid, // persisted state, not recalculated here
     totalPaid,
     balance,
-    payments: rentBill.payments,
+    allocations: allocations.map(a => ({
+      id: a.id,
+      amount: a.amount,
+      payment: {
+        id: a.payment.id,
+        amount: a.payment.amount,
+        paidAt: a.payment.paidAt,
+        method: a.payment.method,
+        reference: a.payment.reference,
+        note: a.payment.note
+      }
+    })),
     lease: rentBill.lease
       ? {
           id: rentBill.lease.id,

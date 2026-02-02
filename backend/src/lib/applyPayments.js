@@ -2,10 +2,6 @@ import prisma from '../lib/prisma.js'
 import { recalcRentBillPaidStatus } from './rentBill.recalc.js'
 import { recalcWaterBillPaidStatus } from './recalcWaterBillPaidStatus.js'
 
-/**
- * Applies a tenant payment across unpaid bills (rent first, then water).
- * Supports partial, full, and overpayments.
- */
 export async function applyPayment({
   tenantId,
   amount,
@@ -14,115 +10,98 @@ export async function applyPayment({
   reference,
   note
 }) {
-  let remaining = amount
-  const allocations = []
+  if (amount <= 0) {
+    throw new Error('Payment amount must be greater than zero')
+  }
 
-  // 1️⃣ Fetch unpaid rent & water bills (ensure IDs and amounts are selected)
-  const rentBills = await prisma.rentBill.findMany({
-    where: { lease: { tenantId }, paid: false },
-    select: {
-      id: true,
-      amount: true,
-      dueDate: true,
-      leaseId: true,
-      lease: {
-        select: { tenantId: true, unitId: true }
-      }
-    },
-    orderBy: { dueDate: 'asc' }
-  })
+  return await prisma.$transaction(async (tx) => {
+    let remaining = amount
+    const allocations = []
 
-  // Note: WaterBill uses `dueDate` and `status` (not `billingDate` / `paid`)
-  const waterBills = await prisma.waterBill.findMany({
-    where: { tenantId, status: { not: 'paid' } },
-    select: {
-      id: true,
-      amount: true,
-      dueDate: true,
-      status: true
-    },
-    orderBy: { dueDate: 'asc' }
-  })
-
-  // 2️⃣ Combine and sort all unpaid bills by date
-  const bills = [
-    ...rentBills.map(b => ({ ...b, type: 'rent', date: b.dueDate })),
-    ...waterBills.map(b => ({ ...b, type: 'water', date: b.dueDate }))
-  ].sort((a, b) => new Date(a.date) - new Date(b.date))
-
-  // 3️⃣ Iterate and allocate payments
-  for (const bill of bills) {
-    const billId = bill.id
-    const billType = bill.type
-
-    if (!billId) {
-      console.warn(`⚠️ Skipping bill with missing id: ${JSON.stringify(bill)}`)
-      continue
-    }
-
-    // Compute remaining balance for this bill
-    const paidAgg = await prisma.payment.aggregate({
-      where:
-        billType === 'rent'
-          ? { rentBillId: billId }
-          : { waterBillId: billId },
-      _sum: { amount: true }
-    })
-    const alreadyPaid = paidAgg._sum.amount || 0
-    const billBalance = bill.amount - alreadyPaid
-
-    if (billBalance <= 0) continue
-
-    const amountToApply = Math.min(remaining, billBalance)
-
-    // Create payment record
-    await prisma.payment.create({
+    // Create the payment
+    const payment = await tx.payment.create({
       data: {
         tenantId,
-        amount: amountToApply,
+        amount,
         paidAt: paidAt ? new Date(paidAt) : new Date(),
         method,
         reference,
-        note,
-        rentBillId: billType === 'rent' ? billId : null,
-        waterBillId: billType === 'water' ? billId : null
+        note
       }
     })
 
-    allocations.push({ billId, type: billType, applied: amountToApply })
+    // Fetch unpaid rent bills (locked to this transaction)
+    const rentBills = await tx.rentBill.findMany({
+      where: { paid: false, lease: { tenantId } },
+      select: { id: true, amount: true, dueDate: true },
+      orderBy: { dueDate: 'asc' }
+    })
 
-    // Update remaining amount
-    remaining -= amountToApply
+    // Fetch unpaid water bills
+    const waterBills = await tx.waterBill.findMany({
+      where: { status: 'pending', tenantId },
+      select: { id: true, amount: true, dueDate: true },
+      orderBy: { dueDate: 'asc' }
+    })
 
-    // Recalculate bill paid status safely
-    if (billType === 'rent') {
-      await recalcRentBillPaidStatus(billId)
-    } else {
-      await recalcWaterBillPaidStatus(billId)
+    const bills = [
+      ...rentBills.map(b => ({ ...b, type: 'rent' })),
+      ...waterBills.map(b => ({ ...b, type: 'water' }))
+    ].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+
+    // Allocate payment
+    for (const bill of bills) {
+      if (remaining <= 0) break
+
+      const agg = await tx.paymentAllocation.aggregate({
+        where: {
+          billType: bill.type,
+          ...(bill.type === 'rent'
+            ? { rentBillId: bill.id }
+            : { waterBillId: bill.id })
+        },
+        _sum: { amount: true }
+      })
+
+      const alreadyPaid = agg._sum.amount ?? 0
+      const billBalance = bill.amount - alreadyPaid
+
+      if (billBalance <= 0) continue
+
+      const toApply = Math.min(remaining, billBalance)
+
+      await tx.paymentAllocation.create({
+        data: {
+          paymentId: payment.id,
+          billType: bill.type,
+          amount: toApply,
+          ...(bill.type === 'rent'
+            ? { rentBillId: bill.id }
+            : { waterBillId: bill.id })
+        }
+      })
+
+      allocations.push({
+        billId: bill.id,
+        type: bill.type,
+        applied: toApply
+      })
+
+      remaining -= toApply
+
+      if (bill.type === 'rent') {
+        await recalcRentBillPaidStatus(bill.id, tx)
+      } else {
+        await recalcWaterBillPaidStatus(bill.id, tx)
+      }
     }
 
-    // Stop allocation if fully applied
-    if (remaining <= 0) break
-  }
 
-  // 4️⃣ Handle overpayment (unallocated balance)
-  if (remaining > 0) {
-    await prisma.payment.create({
-      data: {
-        tenantId,
-        amount: remaining,
-        paidAt: paidAt ? new Date(paidAt) : new Date(),
-        method,
-        reference,
-        note: `Unallocated balance (${note || ''})`
-      }
-    })
-    allocations.push({ billId: null, type: 'unallocated', applied: remaining })
-  }
-
-  return {
-    allocations,
-    totalApplied: amount - remaining,
-    overpayment: remaining
-  }
+    return {
+      paymentId: payment.id,
+      totalAllocated: amount - remaining,
+      unallocated: remaining,
+      allocations
+    }
+  })
 }
