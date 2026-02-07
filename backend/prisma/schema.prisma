@@ -120,7 +120,7 @@ model PaymentAllocation {
   paymentId    Int
   payment      Payment  @relation(fields: [paymentId], references: [id])
 
-  billType     String   // "rent" | "water" | "deposit"
+  billType     String   // "rent" | "water" | "deposit" | "credit"
 
   rentBillId   Int?
   rentBill     RentBill? @relation(fields: [rentBillId], references: [id])

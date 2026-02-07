@@ -1,5 +1,6 @@
 const prisma = require('../lib/prisma');
 const { sendBillReminder } = require('../services/reminderService'); // <-- Import reminder logic
+const { recalcRentBillPaidStatus } = require('../lib/rentBill.recalc')
 
 async function generateMonthlyRentBills() {
   const today = new Date();
@@ -17,7 +18,7 @@ async function generateMonthlyRentBills() {
     include: { tenant: true, unit: true }
   });
 
-  const newBillIds = []; // collect newly created bill IDs
+  const newBillIds = []; // collect unpaid new bills
 
   for (const lease of leases) {
     // Check if a bill for this month already exists
@@ -37,37 +38,38 @@ async function generateMonthlyRentBills() {
     }
 
     // Create the new bill
-    const dueDate = new Date(today.getFullYear(), today.getMonth(), 5); // 5th of the month
-    const bill = await prisma.rentBill.create({
-      data: {
-        leaseId: lease.id,
+    const bill = await prisma.$transaction(async (tx) => {
+      const dueDate = new Date(today.getFullYear(), today.getMonth(), 5)
+
+      return createRentBillWithCredit({
+        tx,
+        lease,
         amount: lease.monthlyRent,
-        dueDate,
-        paid: false,               // explicitly mark as unpaid
-        reminderSent: false,       // reminder not sent yet
-        reminderSentAt: null       // optional (null by default)
-      }
-    });
+        dueDate
+      })
+    })
     
     console.log(`Created bill #${bill.id} for ${lease.tenant.name} (${lease.unit.unitNumber})`);
     newBillIds.push(bill.id);
   }
 
-  // Automatically send reminders for newly created bills (optional manual control)
+  // Automatically send reminders for unpaid bills (optional manual control)
   if (newBillIds.length > 0) {
-    console.log(`Sending reminders for ${newBillIds.length} new bills...`);
-    await sendBillReminder('rent', { onlyNewBills: true, newBillIds });
+    console.log(`Sending reminders for ${newBillIds.length} unpaid bills...`)
+    await sendBillReminder('rent', {
+      onlyNewBills: true,
+      newBillIds
+    })
   } else {
-    console.log('No new bills created. Skipping reminders.');
+    console.log('No unpaid new bills. Skipping reminders.')
   }
 
-  console.log('Rent bill generation complete.');
-  await prisma.$disconnect();
+  console.log('Rent bill generation complete.')
+  await prisma.$disconnect()
 }
 
-generateMonthlyRentBills()
-  .catch(err => {
-    console.error('Error generating bills:', err);
-    prisma.$disconnect();
-    process.exit(1);
-  });
+generateMonthlyRentBills().catch(err => {
+  console.error('Fatal error generating bills:', err)
+  prisma.$disconnect()
+  process.exit(1)
+})

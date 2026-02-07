@@ -96,11 +96,34 @@ export async function applyPayment({
       }
     }
 
+    // Ensure tenant balance exists
+    await tx.tenantBalance.upsert({
+      where: { tenantId },
+      update: {},
+      create: { tenantId }
+    })
+
+    // Apply unallocated amount as credit
+    if (remaining > 0) {
+      await tx.tenantBalance.update({
+        where: { tenantId },
+        data: {
+          balance: {
+            increment: remaining
+          }
+        }
+      })
+    }
+
+    const updatedBalance = await tx.tenantBalance.findUnique({
+      where: { tenantId }
+    })
 
     return {
       paymentId: payment.id,
       totalAllocated: amount - remaining,
       unallocated: remaining,
+      tenantBalance: updatedBalance.balance,
       allocations
     }
   })
