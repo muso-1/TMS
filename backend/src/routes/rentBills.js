@@ -36,9 +36,7 @@ async function buildRentBillResponse(bill) {
   }
 }
 
-/**
- * Helper: compute financials for a rent bill
- */
+//  Helper: compute financials for a rent bill
 async function computeRentBillTotals(billId) {
   const agg = await prisma.paymentAllocation.aggregate({
     where: {
@@ -52,9 +50,8 @@ async function computeRentBillTotals(billId) {
   return totalPaid
 }
 
-/**
- * List all rent bills (read-only, allocation-derived)
- */
+// List all rent bills (read-only, allocation-derived)
+
 rentBillsRouter.get('/', async (req, res) => {
   try {
     const bills = await prisma.rentBill.findMany({
@@ -80,9 +77,8 @@ rentBillsRouter.get('/', async (req, res) => {
   }
 })
 
-/**
- * Get single rent bill summary
- */
+// Get single rent bill summary
+
 rentBillsRouter.get('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id)
@@ -111,9 +107,7 @@ rentBillsRouter.get('/:id', async (req, res) => {
 })
 
 
-/**
- * Create rent bill
- */
+// Create rent bill
 rentBillsRouter.post('/', async (req, res) => {
   try {
     const { leaseId, dueDate } = req.body
@@ -180,7 +174,7 @@ rentBillsRouter.put('/:id', async (req, res) => {
     const id = Number(req.params.id)
     const { amount, dueDate } = req.body
 
-    // 1️⃣ Check if bill exists
+    // Check if bill exists
     const existingBill = await prisma.rentBill.findUnique({
       where: { id }
     })
@@ -189,7 +183,7 @@ rentBillsRouter.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Rent bill not found' })
     }
 
-    // 2️⃣ Check if any allocations exist
+    // Check if any allocations exist
     const allocationCount = await prisma.paymentAllocation.count({
       where: {
         billType: 'rent',
@@ -197,7 +191,7 @@ rentBillsRouter.put('/:id', async (req, res) => {
       }
     })
 
-    // 3️⃣ Block amount change if allocations exist
+    // Block amount change if allocations exist
     if (amount !== undefined && allocationCount > 0) {
       return res.status(400).json({
         error: 'Cannot change bill amount after payments or credits have been applied'

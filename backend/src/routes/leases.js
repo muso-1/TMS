@@ -3,10 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const leasesRouter = express.Router();
 
-/**
- * Create a new lease
- * Body: { tenantId, unitId, startDate, endDate, monthlyRent }
- */
+// Create a new lease
 leasesRouter.post('/', async (req, res) => {
   try {
     const { tenantId, unitId, startDate, endDate, monthlyRent } = req.body;
@@ -45,9 +42,7 @@ leasesRouter.post('/', async (req, res) => {
   }
 });
 
-/**
- * List all leases (with tenant + unit info)
- */
+// List all leases (with tenant + unit info)
 leasesRouter.get('/', async (req, res) => {
   try {
     const leases = await prisma.lease.findMany({
@@ -63,9 +58,7 @@ leasesRouter.get('/', async (req, res) => {
   }
 });
 
-/**
- * Get a single lease by ID
- */
+// Get a single lease by ID
 leasesRouter.get('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -86,9 +79,7 @@ leasesRouter.get('/:id', async (req, res) => {
   }
 });
 
-/**
- * Update a lease
- */
+// Update a lease
 leasesRouter.patch('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -114,10 +105,8 @@ leasesRouter.patch('/:id', async (req, res) => {
   }
 });
 
-/**
- * Delete a lease
- * Also deletes rent bills under this lease id cascade is configured
- */
+// Delete a lease
+// Also deletes rent bills under this lease id cascade is configured
 leasesRouter.delete('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);

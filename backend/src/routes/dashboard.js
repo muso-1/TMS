@@ -11,11 +11,11 @@ const {
   classifyRentBills
 } = require('../services/dashboard.service')
 
-/**
- * Dashboard summary endpoint
- * - Collections: allocations tied to bills due in period
- * - Rent billed: rent due in period
- * - Rent bill stats: lifetime payment status per rent bill
+/*
+  Dashboard summary endpoint
+  - Collections: allocations tied to bills due in period
+  - Rent billed: rent due in period
+  - Rent bill stats: lifetime payment status per rent bill
  */
 router.get('/summary', async (req, res) => {
   try {

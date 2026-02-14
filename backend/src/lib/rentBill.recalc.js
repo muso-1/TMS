@@ -1,8 +1,8 @@
 const prisma = require('../lib/prisma')
 
-/**
- * Recalculates the "paid" status of a rent bill based on allocations.
- * Must run inside the same transaction as payment application.
+/*
+  Recalculates the "paid" status of a rent bill based on allocations.
+  Must run inside the same transaction as payment application.
  */
 async function recalcRentBillPaidStatus(rentBillId, tx = prisma) {
   if (!rentBillId) {

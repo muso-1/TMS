@@ -1,10 +1,10 @@
 import prisma from '../lib/prisma.js'
 
-/**
- * Recalculates the "status" of a WaterBill based on allocations.
- * - Marks as "paid" when fully settled.
- * - Reverts to "pending" otherwise.
- */
+/*
+  Recalculates the "status" of a WaterBill based on allocations.
+  - Marks as "paid" when fully settled.
+  - Reverts to "pending" otherwise.
+*/ 
 export async function recalcWaterBillPaidStatus(waterBillId, tx = prisma) {
   if (!waterBillId) {
     console.warn('recalcWaterBillPaidStatus called without waterBillId')

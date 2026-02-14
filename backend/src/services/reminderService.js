@@ -2,12 +2,12 @@ import nodemailer from 'nodemailer';
 import prisma from '../lib/prisma.js';
 
 /**
- * Sends rent or water bill reminders via email.
- * @param {'rent' | 'water'} billType - Type of bill to send reminders for
- * @param {Object} [options] - Optional filters
- * @param {boolean} [options.onlyNewBills] - If true, send reminders only for newly created bills
- * @param {number[]} [options.newBillIds] - List of new bill IDs
- */
+  Sends rent or water bill reminders via email.
+  @param {'rent' | 'water'} billType - Type of bill to send reminders for
+  @param {Object} [options] - Optional filters
+  @param {boolean} [options.onlyNewBills] - If true, send reminders only for newly created bills
+  @param {number[]} [options.newBillIds] - List of new bill IDs
+*/
 export async function sendBillReminder(billType, options = {}) {
   const { onlyNewBills = false, newBillIds = [] } = options;
   let bills;

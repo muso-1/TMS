@@ -3,11 +3,10 @@ const { sendBillReminder } = require('../services/reminderService');
 
 const remindersRouter = Router();
 
-/**
- * @route POST /api/reminders/rent
- * @desc Send rent bill reminders for newly created bills
- * @body { onlyNewBills?: boolean, newBillIds?: number[] }
- */
+/*
+  @route POST /api/reminders/rent
+  @desc Send rent bill reminders for newly created bills
+*/
 remindersRouter.post('/rent', async (req, res) => {
   const { onlyNewBills = false, newBillIds = [] } = req.body;
 
@@ -24,10 +23,10 @@ remindersRouter.post('/rent', async (req, res) => {
   }
 });
 
-/**
- * @route POST /api/reminders/rent/bulk
- * @desc Send bulk rent reminders for all unpaid or overdue rent bills
- */
+/*
+  @route POST /api/reminders/rent/bulk
+  @desc Send bulk rent reminders for all unpaid or overdue rent bills
+*/
 remindersRouter.post('/rent/bulk', async (req, res) => {
   try {
     await sendBillReminder('rent');
@@ -38,11 +37,10 @@ remindersRouter.post('/rent/bulk', async (req, res) => {
   }
 });
 
-/**
- * @route POST /api/reminders/water
- * @desc Send water bill reminders for newly created bills
- * @body { onlyNewBills?: boolean, newBillIds?: number[] }
- */
+/*
+  @route POST /api/reminders/water
+  @desc Send water bill reminders for newly created bills
+*/
 remindersRouter.post('/water', async (req, res) => {
   const { onlyNewBills = false, newBillIds = [] } = req.body;
 
@@ -59,10 +57,10 @@ remindersRouter.post('/water', async (req, res) => {
   }
 });
 
-/**
- * @route POST /api/reminders/water/bulk
- * @desc Send bulk water bill reminders for all pending/unpaid bills
- */
+/*
+  @route POST /api/reminders/water/bulk
+  @desc Send bulk water bill reminders for all pending/unpaid bills
+*/
 remindersRouter.post('/water/bulk', async (req, res) => {
   try {
     await sendBillReminder('water');
@@ -73,10 +71,10 @@ remindersRouter.post('/water/bulk', async (req, res) => {
   }
 });
 
-/**
- * @route POST /api/reminders/:billType/:billId
- * @desc Send a reminder for an individual rent or water bill
- */
+/*
+  @route POST /api/reminders/:billType/:billId
+  @desc Send a reminder for an individual rent or water bill
+*/
 remindersRouter.post('/:billType/:billId', async (req, res) => {
   const { billType, billId } = req.params;
 

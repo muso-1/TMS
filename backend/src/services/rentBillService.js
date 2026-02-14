@@ -1,8 +1,6 @@
 const { recalcRentBillPaidStatus } = require('../lib/rentBill.recalc')
 
-/**
- * Creates a rent bill and automatically applies tenant credit (if any)
- */
+// Creates a rent bill and automatically applies tenant credit (if any)
 async function createRentBillWithCredit({
   tx,
   lease,

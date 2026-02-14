@@ -1,15 +1,15 @@
 const prisma = require('../lib/prisma')
 
-/**
- * Read-only rent bill summary
- * - NO mutations
- * - NO recalculation side effects
- * - Derived values computed from allocations
+/*
+  Read-only rent bill summary
+  - NO mutations
+  - NO recalculation side effects
+  - Derived values computed from allocations
  */
 async function getRentBillSummary(id) {
   if (!id) throw new Error('RentBill id is required')
 
-  // 1️⃣ Fetch rent bill with lease context
+  // Fetch rent bill with lease context
   const rentBill = await prisma.rentBill.findUnique({
     where: { id },
     include: {
@@ -24,7 +24,7 @@ async function getRentBillSummary(id) {
 
   if (!rentBill) throw new Error('RentBill not found')
 
-  // 2️⃣ Fetch allocations for this bill
+  // Fetch allocations for this bill
   const allocations = await prisma.paymentAllocation.findMany({
     where: {
       billType: 'rent',
@@ -35,11 +35,11 @@ async function getRentBillSummary(id) {
     }
   })
 
-  // 3️⃣ Derive totals
+  // Derive totals
   const totalPaid = allocations.reduce((sum, a) => sum + a.amount, 0)
   const balance = rentBill.amount - totalPaid
 
-  // 4️⃣ Return summary
+  // Return summary
   return {
     id: rentBill.id,
     amount: rentBill.amount,

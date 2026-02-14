@@ -20,9 +20,7 @@ paymentsRouter.get('/', async (req, res) => {
     const from = req.query.from ? new Date(req.query.from) : undefined
     const to = req.query.to ? new Date(req.query.to) : undefined
 
-    /** -------------------------------
-     * Build base payment filter
-     * -------------------------------- */
+    // Base payment filter
     const paymentWhere = {}
     if (tenantId) paymentWhere.tenantId = tenantId
     if (from || to) {
@@ -32,9 +30,7 @@ paymentsRouter.get('/', async (req, res) => {
       }
     }
 
-    /** --------------------------------
-     * Build allocation filter (optional)
-     * -------------------------------- */
+    // Build allocation filter (optional)
     const allocationConditions = []
 
     if (rentBillId) {
@@ -82,9 +78,7 @@ paymentsRouter.get('/', async (req, res) => {
       prisma.payment.count({ where: paymentWhere })
     ])
 
-    /** --------------------------------
-     * Shape response for frontend
-     * -------------------------------- */
+    // Shape response for frontend
     const result = items.map(p => ({
       id: p.id,
       amount: p.amount,

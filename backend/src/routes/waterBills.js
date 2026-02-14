@@ -6,9 +6,7 @@ const { recalcWaterBillPaidStatus } = require('../lib/recalcWaterBillPaidStatus'
 const prisma = new PrismaClient();
 const router = express.Router();
 
-/**
- * CREATE water bills (manual / monthly readings)
- */
+// CREATE water bills (manual / monthly readings)
 router.post('/', async (req, res) => {
   try {
     const billsData = Array.isArray(req.body) ? req.body : [req.body];
@@ -77,9 +75,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-/**
- * LIST water bills with payment summary
- */
+// LIST water bills with payment summary
 router.get('/', async (req, res) => {
   try {
     const bills = await prisma.waterBill.findMany({
@@ -102,9 +98,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-/**
- * GET single water bill with allocations
- */
+// GET single water bill with allocations
 router.get('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -141,10 +135,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-/**
- * UPDATE water bill (READINGS ONLY)
- * ❗ status & paidAt are NOT editable
- */
+// UPDATE water bill (READS ONLY status & paidaT, NOT editable)
 router.put('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -188,9 +179,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-/**
- * DELETE water bill (with allocations)
- */
+// DELETE water bill (with allocations)
 router.delete('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
