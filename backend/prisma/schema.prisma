@@ -19,9 +19,9 @@ model Tenant {
   email       String        @unique
   phone       String
   
-  units       Unit[]
+  units       Unit[]        @relation("Units")
   leases      Lease[]       @relation("TenantLeases")
-  waterBills  WaterBill[]
+  waterBills  WaterBill[]   @relation("WaterBill")
   maintenance Maintenance[]
 
   payments    Payment[]     // added: direct link to payments

@@ -27,18 +27,28 @@ router.get('/', async (req, res) => {
     const tenants = await prisma.tenant.findMany({
       include: {
         units: true,
-        balance: true
+        balance: true,
+        payments: {
+          select: {
+            amount: true
+          }
+        }
       }
     })
 
-    const result = tenants.map(t => ({
-      id: t.id,
-      name: t.name,
-      email: t.email,
-      phone: t.phone,
-      units: t.units,
-      balance: t.balance?.balance ?? 0
-    }))
+    const result = tenants.map(t => {
+      const totalPaid = t.payments.reduce((sum, p) => sum + p.amount, 0)
+
+      return {
+        id: t.id,
+        name: t.name,
+        email: t.email,
+        phone: t.phone,
+        units: t.units,
+        balance: t.balance?.balance ?? 0,
+        totalPaid
+      }
+    })
 
     res.json(result)
   } catch (error) {

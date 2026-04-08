@@ -17,7 +17,7 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-app.use('/api/tenants', tenantRoutes);
+app.use('/api/tenants', tenantRoutes); 
 app.use('/api/units', unitRoutes);
 app.use('/api/rentbills', rentBillRoutes);
 app.use('/api/waterbills', waterBillRoutes);

@@ -16,7 +16,7 @@ export default function Tenants() {
   const [paymentsTenantId, setPaymentsTenantId] = useState(null)
   const [payments, setPayments] = useState([])
 
-  // Filter tenants by search query
+  // Filter tenants by search query 
   const filtered = tenants.filter(t =>
     [t.name, t.email, t.phone].join(' ').toLowerCase().includes(q.toLowerCase())
   )
