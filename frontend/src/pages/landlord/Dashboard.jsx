@@ -49,8 +49,6 @@ export default function Dashboard() {
     return <div className="text-gray-500">Loading dashboard…</div>
   }
 
-  console.log('summary', summary)
-
   return (
     <div className="space-y-6">
       {/* ================= KPIs ================= */}
