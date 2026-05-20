@@ -4,11 +4,26 @@ import Table from '../../components/ui/Table'
 import { useState } from 'react'
 import Modal from '../../components/ui/Modal'
 import EditTenantForm from '../../components/forms/EditTenantForm'
+import TenantForm from '../../components/forms/TenantForm'
+import AssignTenantForm from '../../components/forms/AssignTenantForm'
+import { listUnits } from '../../api/units'
 
 export default function Tenants() {
   const { data: tenants = [], isLoading } = useQuery({
     queryKey: ['tenants'],
     queryFn: listTenants
+  })
+
+  const { data: units = [] } = useQuery({
+    queryKey: ['units'],
+    queryFn: listUnits
+  })
+
+  const [open, setOpen] = useState({
+    tenant: false,
+    unit: false,
+    water: false,
+    assign: false
   })
 
   const [q, setQ] = useState('')
@@ -17,9 +32,9 @@ export default function Tenants() {
   const [payments, setPayments] = useState([])
 
   // Filter tenants by search query 
-  const filtered = tenants.filter(t =>
+  const filtered = Array.isArray(tenants) ? tenants.filter(t =>
     [t.name, t.email, t.phone].join(' ').toLowerCase().includes(q.toLowerCase())
-  )
+  ) : 0
 
   // Fetch payments for a tenant when requested
   const fetchPayments = async (tenantId) => {
@@ -37,6 +52,11 @@ export default function Tenants() {
     { key: 'name', header: 'Name' },
     { key: 'email', header: 'Email' },
     { key: 'phone', header: 'Phone' },
+    {
+      key: 'unitNumber',
+      header: 'Unit',
+      cell: tenant => tenant.units?.[0]?.unitNumber ?? 'Not Assigned'
+    },
     {
       key: 'totalPaid',
       header: 'Total Paid',
@@ -82,6 +102,22 @@ export default function Tenants() {
 
       <Table columns={columns} data={filtered} />
 
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="text-black px-3 py-2 rounded"
+          onClick={() => setOpen(o => ({ ...o, tenant: true }))}
+        >
+          Add Tenant
+        </button>
+
+        <button
+          className="text-black px-3 py-2 rounded"
+          onClick={() => setOpen(o => ({ ...o, assign: true }))}
+        >
+          Assign/ Unassign Unit
+        </button>
+      </div>
+        
       <Modal
         title="Edit Tenant"
         open={!!editing}
@@ -118,6 +154,26 @@ export default function Tenants() {
             data={payments}
           />
         )}
+      </Modal>
+
+      <Modal
+        title="Add Tenant"
+        open={open.tenant}
+        onClose={() => setOpen(o => ({ ...o, tenant: false }))}
+      >
+        <TenantForm onClose={() => setOpen(o => ({ ...o, tenant: false }))} />
+      </Modal>
+
+      <Modal
+        title="Assign Tenant to Unit"
+        open={open.assign}
+        onClose={() => setOpen(o => ({ ...o, assign: false }))}
+      >
+        <AssignTenantForm
+          tenants={tenants}
+          units={units}
+          onClose={() => setOpen(o => ({ ...o, assign: false }))}
+        />
       </Modal>
     </div>
   )

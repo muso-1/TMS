@@ -43,6 +43,7 @@ export default function Units() {
             <th className="p-2 text-left">ID</th>
             <th className="p-2 text-left">Unit Number</th>
             <th className="p-2 text-left">Status</th>
+            <th className="p-2 text-left">Tenant</th>
             <th className="p-2 text-left">Actions</th>
           </tr>
         </thead>
@@ -52,6 +53,7 @@ export default function Units() {
               <td className="p-2">{unit.id}</td>
               <td className="p-2">{unit.unitNumber}</td>
               <td className="p-2">{unit.status}</td>
+              <td className="p-2">{unit.tenant?.name ?? 'Not Assigned'}</td>
               <td className="p-2">
                 <button
                   className="text-blue-500 underline"

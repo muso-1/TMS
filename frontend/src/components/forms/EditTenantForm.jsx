@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { updateTenant } from '../../api/tenants'
 
 export default function EditTenantForm({ tenant, onClose }) {
@@ -10,24 +10,27 @@ export default function EditTenantForm({ tenant, onClose }) {
   })
 
   const queryClient = useQueryClient()
-  const mutation = useMutation({
-    mutationFn: (data) => updateTenant(tenant.id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['tenants'])
-      onClose()
-    }
-  })
+  const [saving, setSaving] = useState(false)
 
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm(f => ({ ...f, [name]: value }))
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    mutation.mutate(form)
-  }
+    setSaving(true)
 
+    try {
+      await updateTenant(tenant.id, form)
+      await queryClient.invalidateQueries({ queryKey: ['tenants'] })
+      onClose()
+    } catch (error) {
+      console.error('Failed to update tenant:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
@@ -63,9 +66,9 @@ export default function EditTenantForm({ tenant, onClose }) {
       <button
         type="submit"
         className="bg-blue-500 text-black px-3 py-2 rounded"
-        disabled={mutation.isLoading}
+        disabled={saving}
       >
-        {mutation.isLoading ? 'Saving...' : 'Save Changes'}
+        {saving ? 'Saving...' : 'Save Changes'}
       </button>
     </form>
   )

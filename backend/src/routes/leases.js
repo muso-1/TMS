@@ -6,39 +6,43 @@ const leasesRouter = express.Router();
 // Create a new lease
 leasesRouter.post('/', async (req, res) => {
   try {
-    const { tenantId, unitId, startDate, endDate, monthlyRent } = req.body;
+    const {
+      tenantId,
+      unitId,
+      startDate,
+      endDate,
+      monthlyRent
+    } = req.body;
 
-    if (!tenantId || !unitId || !startDate || !monthlyRent) {
-      return res.status(400).json({ error: 'tenantId, unitId, startDate, and monthlyRent are required' });
-    }
+    const lease = await prisma.$transaction(async (tx) => {
+      // Create the lease
+      const newLease = await tx.lease.create({
+        data: {
+          tenantId: parseInt(tenantId),
+          unitId: parseInt(unitId),
+          startDate: new Date(startDate),
+          endDate: endDate ? new Date(endDate) : null,
+          monthlyRent: parseFloat(monthlyRent),
+          status: 'active'
+        }
+      });
 
-    // Validate tenant and unit exist
-    const [tenant, unit] = await Promise.all([
-      prisma.tenant.findUnique({ where: { id: Number(tenantId) } }),
-      prisma.unit.findUnique({ where: { id: Number(unitId) } })
-    ]);
+      // Assign tenant to the unit
+      await tx.unit.update({
+        where: { id: parseInt(unitId) },
+        data: {
+          tenantId: parseInt(tenantId),
+          status: 'occupied'
+        }
+      });
 
-    if (!tenant) return res.status(400).json({ error: 'Invalid tenantId' });
-    if (!unit) return res.status(400).json({ error: 'Invalid unitId' });
-
-    const lease = await prisma.lease.create({
-      data: {
-        tenantId: Number(tenantId),
-        unitId: Number(unitId),
-        startDate: new Date(startDate),
-        endDate: endDate ? new Date(endDate) : null,
-        monthlyRent: Number(monthlyRent),
-      },
-      include: {
-        tenant: true,
-        unit: true,
-      }
+      return newLease;
     });
 
     res.status(201).json(lease);
-  } catch (e) {
-    console.error('Error creating lease:', e);
-    res.status(500).json({ error: e.message });
+  } catch (error) {
+    console.error('Error creating lease:', error);
+    res.status(500).json({ error: 'Failed to create lease' });
   }
 });
 
@@ -79,26 +83,50 @@ leasesRouter.get('/:id', async (req, res) => {
   }
 });
 
-// Update a lease
 leasesRouter.patch('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { startDate, endDate, monthlyRent } = req.body;
+    const { startDate, endDate, monthlyRent, status } = req.body;
 
-    const lease = await prisma.lease.update({
-      where: { id },
-      data: {
-        startDate: startDate ? new Date(startDate) : undefined,
-        endDate: endDate ? new Date(endDate) : undefined,
-        monthlyRent: monthlyRent !== undefined ? Number(monthlyRent) : undefined,
-      },
-      include: {
-        tenant: true,
-        unit: true
+    const updatedLease = await prisma.$transaction(async (tx) => {
+
+      // 1. Update lease
+      const lease = await tx.lease.update({
+        where: { id },
+        data: {
+          startDate: startDate ? new Date(startDate) : undefined,
+          endDate: endDate ? new Date(endDate) : undefined,
+          monthlyRent: monthlyRent !== undefined ? Number(monthlyRent) : undefined,
+          status: status ?? undefined
+        }
+      });
+
+      // 2. Sync unit based on lease status
+      if (status === 'terminated' || status === 'expired') {
+        await tx.unit.update({
+          where: { id: lease.unitId },
+          data: {
+            tenantId: null,
+            status: 'vacant'
+          }
+        });
       }
+
+      if (status === 'active') {
+        await tx.unit.update({
+          where: { id: lease.unitId },
+          data: {
+            tenantId: lease.tenantId,
+            status: 'occupied'
+          }
+        });
+      }
+
+      return lease;
     });
 
-    res.json(lease);
+    res.json(updatedLease);
+
   } catch (e) {
     console.error('Error updating lease:', e);
     res.status(500).json({ error: e.message });

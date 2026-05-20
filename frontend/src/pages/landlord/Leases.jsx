@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { listLeases } from '../../api/leases'
+import { listTenants } from '../../api/tenants'
+import { listUnits } from '../../api/units'
 import Table from '../../components/ui/Table'
 import Modal from '../../components/ui/Modal'
 import { useState, useMemo } from 'react'
@@ -10,6 +12,16 @@ export default function Leases() {
   const { data: leases = [], isLoading } = useQuery({
     queryKey: ['leases'],
     queryFn: listLeases,
+  })
+
+  const { data: tenants = [] } = useQuery({
+      queryKey: ['tenants'],
+      queryFn: listTenants
+  })
+  
+  const { data: units = [] } = useQuery({
+    queryKey: ['units'],
+    queryFn: listUnits
   })
 
   const [search, setSearch] = useState('')
@@ -39,6 +51,10 @@ export default function Leases() {
     key: 'unit',
     header: 'Unit',
     cell: l => l.unit?.unitNumber || '—'
+  },
+  {
+    key: 'status',
+    header: 'Status'
   },
   {
     key: 'startDate',
@@ -102,7 +118,10 @@ export default function Leases() {
         open={creating}
         onClose={() => setCreating(false)}
       >
-        <CreateLeaseForm onClose={() => setCreating(false)} />
+        <CreateLeaseForm 
+          tenants={tenants}
+          units={units}
+          onClose={() => setCreating(false)} />
       </Modal>
 
       {/* Edit Lease Modal */}

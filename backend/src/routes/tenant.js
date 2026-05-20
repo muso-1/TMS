@@ -118,5 +118,25 @@ router.get('/:id/payments', async (req, res) => {
   }
 })
 
+router.patch('/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { name, email, phone } = req.body;
+
+    const tenant = await prisma.tenant.update({
+      where: {id},
+      data: {
+        name: name,
+        email: email,
+        phone: phone,
+      }
+    })
+    
+    res.json(tenant)
+  } catch (e) {
+    console.error('Error updating tenant:', e);
+    res.status(500).json({ error: e.message });
+  }
+})
 
 module.exports = router;

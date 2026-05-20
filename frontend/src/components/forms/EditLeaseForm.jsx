@@ -10,7 +10,8 @@ export default function EditLeaseForm({ lease, onClose }) {
     endDate: lease.endDate
       ? new Date(lease.endDate).toISOString().split('T')[0]
       : '',
-    monthlyRent: lease.monthlyRent ?? ''
+    monthlyRent: lease.monthlyRent ?? '',
+    status: lease.status ?? 'active'
   })
   const [saving, setSaving] = useState(false)
   const queryClient = useQueryClient()
@@ -25,9 +26,10 @@ export default function EditLeaseForm({ lease, onClose }) {
     await updateLease(lease.id, {
       startDate: new Date(form.startDate),
       endDate: new Date(form.endDate),
-      monthlyRent: Number(form.monthlyRent)
+      monthlyRent: Number(form.monthlyRent),
+      status: form.status
     })
-    await queryClient.invalidateQueries(['leases'])
+    await queryClient.invalidateQueries({ queryKey: ['leases'] })
     setSaving(false)
     onClose()
   }
@@ -64,6 +66,21 @@ export default function EditLeaseForm({ lease, onClose }) {
           className="border rounded px-2 py-1 w-full"
         />
       </div>
+      <div>
+        <label className="block text-sm">Status</label>
+
+        <select
+          name="status"
+          value={form.status}
+          onChange={handleChange}
+          className="border rounded px-2 py-1 w-full"
+        >
+        <option value="active">Active</option>
+        <option value="pending">Pending</option>
+        <option value="terminated">Terminated</option>
+        <option value="expired">Expired</option>
+        </select>
+    </div>
       <button
         type="submit"
         disabled={saving}

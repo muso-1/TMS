@@ -84,7 +84,7 @@ router.get('/', async (req, res) => {
         _count: {
           select: {
             // virtual view via allocations
-            paymentAllocations: true,
+            allocations: true,
           },
         },
       },

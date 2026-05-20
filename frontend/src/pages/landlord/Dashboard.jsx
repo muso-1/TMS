@@ -23,7 +23,7 @@ export default function Dashboard() {
     assign: false
   })
 
-  // 🔮 Future-proof period support
+  // Future-proof period support
   const period = 'month'
 
   const { data: tenants = [] } = useQuery({
@@ -40,12 +40,16 @@ export default function Dashboard() {
     queryKey: ['dashboard-summary', period],
     queryFn: () => getDashboardSummary({ period })
   })
-
-  const vacantUnits = units.filter(u => !u.tenantId).length
+  
+  const vacantUnits = Array.isArray(units)
+  ? units.filter(u => !u.tenantId).length
+  : 0
 
   if (isLoading || !summary) {
     return <div className="text-gray-500">Loading dashboard…</div>
   }
+
+  console.log('summary', summary)
 
   return (
     <div className="space-y-6">
@@ -138,7 +142,7 @@ export default function Dashboard() {
           className="text-black px-3 py-2 rounded"
           onClick={() => setOpen(o => ({ ...o, assign: true }))}
         >
-          Assign Unit to Tenant
+          Assign/ Unassign Unit
         </button>
       </div>
 

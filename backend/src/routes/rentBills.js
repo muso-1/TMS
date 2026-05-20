@@ -5,17 +5,7 @@ const { createRentBillWithCredit } = require('../services/rentBillService')
 const prisma = new PrismaClient()
 const rentBillsRouter = Router()
 
-async function buildRentBillResponse(bill) {
-  const agg = await prisma.paymentAllocation.aggregate({
-    where: {
-      billType: 'rent',
-      rentBillId: bill.id
-    },
-    _sum: { amount: true }
-  })
-
-  const totalPaid = agg._sum.amount ?? 0
-
+function buildRentBillResponse(bill, totalPaid) {
   return {
     id: bill.id,
     amount: bill.amount,
@@ -37,7 +27,7 @@ async function buildRentBillResponse(bill) {
 }
 
 //  Helper: compute financials for a rent bill
-async function computeRentBillTotals(billId) {
+/*async function computeRentBillTotals(billId) {
   const agg = await prisma.paymentAllocation.aggregate({
     where: {
       billType: 'rent',
@@ -48,7 +38,7 @@ async function computeRentBillTotals(billId) {
 
   const totalPaid = agg._sum.amount ?? 0
   return totalPaid
-}
+}*/
 
 // List all rent bills (read-only, allocation-derived)
 
@@ -66,9 +56,25 @@ rentBillsRouter.get('/', async (req, res) => {
       orderBy: { dueDate: 'desc' }
     })
 
-    const results = await Promise.all(
-      bills.map(buildRentBillResponse)
+    const billIds = bills.map(b => b.id)
+
+    const allocations = await prisma.paymentAllocation.groupBy({
+      by: ['rentBillId'],
+      where: {
+        billType: 'rent',
+        rentBillId: { in: billIds }
+      },
+      _sum: { amount: true }
+    })
+
+    const allocationMap = Object.fromEntries(
+      allocations.map(a => [a.rentBillId, a._sum.amount || 0])
     )
+
+    const results = bills.map(bill => {
+      const totalPaid = allocationMap[bill.id] || 0
+      return buildRentBillResponse(bill, totalPaid)
+    })
 
     res.json(results)
   } catch (e) {
@@ -83,7 +89,24 @@ rentBillsRouter.get('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id)
 
-    const bill = await prisma.rentBill.findUnique({
+    const [bill] = await prisma.$queryRaw`
+      SELECT 
+        rb.*,
+        COALESCE(SUM(pa.amount), 0) as "totalPaid"
+      FROM "RentBill" rb
+      LEFT JOIN "PaymentAllocation" pa
+        ON pa."rentBillId" = rb.id
+        AND pa."billType" = 'rent'
+      WHERE rb.id = ${id}
+      GROUP BY rb.id
+    `
+
+    if (!bill) {
+      return res.status(404).json({ error: 'Rent bill not found' })
+    }
+
+    // fetch relations separately (Prisma still better here)
+    const fullBill = await prisma.rentBill.findUnique({
       where: { id },
       include: {
         lease: {
@@ -95,11 +118,9 @@ rentBillsRouter.get('/:id', async (req, res) => {
       }
     })
 
-    if (!bill) {
-      return res.status(404).json({ error: 'Rent bill not found' })
-    }
+    const response = buildRentBillResponse(fullBill, Number(bill.totalPaid))
+    res.json(response)
 
-    res.json(await buildRentBillResponse(bill))
   } catch (e) {
     console.error('Error fetching rent bill:', e)
     res.status(500).json({ error: e.message })
@@ -150,7 +171,7 @@ rentBillsRouter.post('/', async (req, res) => {
       }
     })
 
-    const response = await buildRentBillResponse(fullBill)
+    const response = buildRentBillResponse(fullBill)
     res.status(201).json(response)
 
   } catch (e) {
@@ -159,16 +180,6 @@ rentBillsRouter.post('/', async (req, res) => {
   }
 })
 
-/**
- * Update rent bill (NO manual paid mutation)
- */
-/**
- * Update rent bill
- * Rules:
- * - amount CANNOT be changed after any allocation exists
- * - dueDate CAN be changed anytime
- * - paid status is always derived from allocations
- */
 rentBillsRouter.put('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id)
@@ -183,31 +194,33 @@ rentBillsRouter.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Rent bill not found' })
     }
 
-    // Check if any allocations exist
-    const allocationCount = await prisma.paymentAllocation.count({
-      where: {
-        billType: 'rent',
-        rentBillId: id
-      }
-    })
+    // SINGLE QUERY aggregation (count + sum)
+    const [summary] = await prisma.$queryRaw`
+      SELECT 
+        COUNT(*) as "allocationCount",
+        COALESCE(SUM(amount), 0) as "totalPaid"
+      FROM "PaymentAllocation"
+      WHERE "billType" = 'rent'
+        AND "rentBillId" = ${id}
+    `
 
-    // Block amount change if allocations exist
+    const allocationCount = Number(summary.allocationCount)
+    const totalPaid = Number(summary.totalPaid)
+
+    // Business rules
     if (amount !== undefined && allocationCount > 0) {
       return res.status(400).json({
         error: 'Cannot change bill amount after payments or credits have been applied'
       })
     }
 
-    const totalPaid = await computeRentBillTotals(id)
-
-    // Block lowering amount below payments
     if (amount !== undefined && amount < totalPaid) {
       return res.status(400).json({
         error: 'Amount cannot be less than total paid'
       })
     }
 
-    // 4️⃣ Perform update (safe fields only)
+    // Update
     const bill = await prisma.rentBill.update({
       where: { id },
       data: {
@@ -215,24 +228,28 @@ rentBillsRouter.put('/:id', async (req, res) => {
         dueDate: dueDate ? new Date(dueDate) : undefined
       }
     })
-
-    const balance = bill.amount - totalPaid
-
-    // 6️⃣ Return derived state
-    res.json({
-      id: bill.id,
-      amount: bill.amount,
-      dueDate: bill.dueDate,
-      paid: totalPaid >= bill.amount,
-      totalPaid,
-      balance
+    
+    // Re-fetch FULL entity
+    const fullBill = await prisma.rentBill.findUnique({
+      where: { id },
+      include: {
+        lease: {
+          include: {
+            tenant: true,
+            unit: true
+          }
+        }
+      }
     })
+
+    // Response
+    res.json(buildRentBillResponse(fullBill, totalPaid))
+
   } catch (e) {
     console.error('Error updating rent bill:', e)
     res.status(500).json({ error: e.message })
   }
 })
-
 
 /**
  * Delete rent bill (ONLY if no allocations exist)

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Sidebar from './components/layout/Sidebar'
 import Header from './components/layout/Header'
-import LandlordDashboard from './pages/landlord/Dashboard'
+import Dashboard from './pages/landlord/Dashboard'
 import Tenants from './pages/landlord/Tenants'
 import Units from './pages/landlord/Units'
 import WaterBills from './pages/landlord/WaterBills'
@@ -28,7 +28,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Navigate to="/landlord/dashboard" />} />
               {/* Landlord */}
-              <Route path="/landlord/dashboard" element={<LandlordDashboard />} />
+              <Route path="/landlord/dashboard" element={<Dashboard />} />
               <Route path="/landlord/tenants" element={<Tenants />} />
               <Route path="/landlord/units" element={<Units />} />
               <Route path="/landlord/water-bills" element={<WaterBills />} />

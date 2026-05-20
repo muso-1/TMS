@@ -19,9 +19,9 @@ model Tenant {
   email       String        @unique
   phone       String
   
-  units       Unit[]        @relation("Units")
-  leases      Lease[]       @relation("TenantLeases")
-  waterBills  WaterBill[]   @relation("WaterBill")
+  units       Unit[]        
+  leases      Lease[]       
+  waterBills  WaterBill[]   
   maintenance Maintenance[]
 
   payments    Payment[]     // added: direct link to payments
@@ -35,15 +35,24 @@ model Unit {
   tenantId   Int?
   tenant     Tenant? @relation(fields: [tenantId], references: [id])
 
-  leases Lease[]
+  leases     Lease[] 
+}
+
+enum LeaseStatus {
+  active
+  terminated
+  expired
+  pending
 }
 
 model Lease {
   id          Int       @id @default(autoincrement())
   tenantId    Int
-  tenant      Tenant   @relation("TenantLeases", fields: [tenantId], references: [id])
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
   unitId      Int
   unit        Unit     @relation(fields: [unitId], references: [id])
+  
+  status      LeaseStatus @default(active)
   
   monthlyRent Float
   startDate   DateTime

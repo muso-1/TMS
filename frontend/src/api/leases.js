@@ -10,7 +10,7 @@ export const createLease = (data) =>
   api.post('/api/leases', data).then(r => r.data)
 
 export const updateLease = (id, data) =>
-  api.put(`/api/leases/${id}`, data).then(r => r.data)
+  api.patch(`/api/leases/${id}`, data).then(r => r.data)
 
 export const deleteLease = (id) =>
   api.delete(`/api/leases/${id}`).then(r => r.data)
