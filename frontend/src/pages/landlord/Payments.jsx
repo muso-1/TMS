@@ -37,7 +37,6 @@ export default function Payments() {
 
   const columns = [
     { key: 'tenant', header: 'Tenant', cell: (p) => p.tenant?.name || '—' },
-    { key: 'unit', header: 'Unit', cell: (p) => p.rentBill?.lease?.unit?.unitNumber || '—' },
     { key: 'amount', header: 'Amount', cell: (p) => formatMoney(p.amount) },
     { key: 'paidAt', header: 'Paid At', cell: (p) => formatDate(p.paidAt) },
     { key: 'method', header: 'Method' },
@@ -111,7 +110,7 @@ export default function Payments() {
 
       {/* Add button */}
       <button
-        className="bg-black text-white px-3 py-2 rounded"
+        className="bg-black text-black px-3 py-2 rounded"
         onClick={() => {
           setEditing(null)
           setOpen(true)

@@ -87,7 +87,7 @@ export default function RentBillForm({ onClose, bill }) {
             <option value="">Select lease</option>
             {leases.map((l) => (
               <option key={l.id} value={l.id}>
-                Unit {l.unit?.name} — KES {l.monthlyRent}
+                {l.tenant?.name} — KES {l.monthlyRent}
               </option>
             ))}
           </select>

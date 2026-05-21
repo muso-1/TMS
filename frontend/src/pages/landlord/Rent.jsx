@@ -78,16 +78,12 @@ export default function Rent() {
     {
       key: 'totalPaid',
       header: 'Total Paid',
-      cell: (r) =>
-        formatMoney(r.payments?.reduce((sum, p) => sum + p.amount, 0) || 0),
+      cell: (r) => formatMoney(r.totalPaid || 0),
     },
     {
       key: 'balance',
       header: 'Balance',
-      cell: (r) => {
-        const totalPaid = r.payments?.reduce((sum, p) => sum + p.amount, 0) || 0
-        return formatMoney(r.amount - totalPaid)
-      },
+      cell: (r) => formatMoney(r.balance || 0),
     },
     { key: 'dueDate', header: 'Due Date', cell: (r) => formatDate(r.dueDate) },
     { key: 'status', header: 'Status', cell: (r) => (r.paid ? 'Paid' : 'Pending') },
