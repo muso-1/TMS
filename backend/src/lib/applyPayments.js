@@ -1,6 +1,4 @@
 import prisma from '../lib/prisma.js'
-import { recalcRentBillPaidStatus } from './rentBill.recalc.js'
-import { recalcWaterBillPaidStatus } from './recalcWaterBillPaidStatus.js'
 
 export async function applyPayment({
   tenantId,
@@ -32,14 +30,26 @@ export async function applyPayment({
 
     // Fetch unpaid rent bills (locked to this transaction)
     const rentBills = await tx.rentBill.findMany({
-      where: { paid: false, lease: { tenantId } },
+      where: {
+        paid: false,
+        isVoided: false,
+
+        lease: {
+          tenantId
+        }
+      },
       select: { id: true, amount: true, dueDate: true },
       orderBy: { dueDate: 'asc' }
     })
 
     // Fetch unpaid water bills
     const waterBills = await tx.waterBill.findMany({
-      where: { status: 'pending', tenantId },
+      where: {
+        status: 'pending',
+        isVoided: false,
+
+        tenantId
+      },
       select: { id: true, amount: true, dueDate: true },
       orderBy: { dueDate: 'asc' }
     })
@@ -89,11 +99,6 @@ export async function applyPayment({
 
       remaining -= toApply
 
-      if (bill.type === 'rent') {
-        await recalcRentBillPaidStatus(bill.id, tx)
-      } else {
-        await recalcWaterBillPaidStatus(bill.id, tx)
-      }
     }
 
     // Ensure tenant balance exists

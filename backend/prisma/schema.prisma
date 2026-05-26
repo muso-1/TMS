@@ -35,7 +35,10 @@ model Unit {
   tenantId   Int?
   tenant     Tenant? @relation(fields: [tenantId], references: [id])
 
-  leases     Lease[] 
+  leases     Lease[]
+
+  waterBills WaterBill[]
+  meterReadings WaterMeterReading[] 
 }
 
 enum LeaseStatus {
@@ -75,8 +78,12 @@ model RentBill {
   allocations     PaymentAllocation[]
 
   createdAt       DateTime  @default(now())
-  paid            Boolean   @default(false)
   paidAt          DateTime?
+
+  // VOIDING
+  isVoided        Boolean  @default(false)
+  voidedAt        DateTime?
+  voidReason      String?
 
   @@index([dueDate])
   @@index([leaseId])
@@ -87,6 +94,13 @@ model WaterBill {
   tenantId        Int
   tenant          Tenant   @relation(fields: [tenantId], references: [id])
   
+  unitId          Int
+  unit            Unit     @relation(fields: [unitId], references: [id])
+
+  meterReadingId Int? @unique
+
+  meterReading WaterMeterReading? @relation(fields: [meterReadingId], references: [id])
+    
   previousReading Int      @default(0)
   currentReading  Int
   unitsUsed       Int
@@ -94,14 +108,39 @@ model WaterBill {
   dueDate         DateTime
 
   allocations     PaymentAllocation[]
-  
-  status          String    @default("pending")
+
   paidAt          DateTime?
   
   reminderSent    Boolean   @default(false)
   reminderSentAt  DateTime?
   
   createdAt       DateTime  @default(now())
+
+  // VOIDING
+  isVoided        Boolean  @default(false)
+  voidedAt        DateTime?
+  voidReason      String?
+}
+
+model WaterMeterReading {
+  id          Int      @id @default(autoincrement())
+
+  unitId      Int
+  unit        Unit     @relation(fields: [unitId], references: [id])
+
+  reading     Int
+  readingDate DateTime @default(now())
+
+  createdAt   DateTime @default(now())
+
+  waterBill   WaterBill?
+
+  // VOIDING
+  isVoided    Boolean   @default(false)
+  voidedAt    DateTime?
+  voidReason  String?
+
+  @@index([unitId, readingDate])
 }
 
 model Payment {

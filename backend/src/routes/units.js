@@ -21,24 +21,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET unit by ID
-router.get('/:id', async (req, res) => {
-  try {
-    const unit = await prisma.unit.findUnique({
-      where: { id: parseInt(req.params.id) },
-      include: { tenant: true },
-    });
-    if (!unit) return res.status(404).json({ error: 'Unit not found' });
-
-    // Derive status dynamically
-    unit.status = unit.tenantId ? 'occupied' : 'vacant';
-
-    res.json(unit);
-  } catch (error) {
-    console.error('Error fetching unit:', error);
-    res.status(500).json({ error: 'Error fetching unit' });
-  }
-});
 
 // CREATE unit
 router.post('/', async (req, res) => {
@@ -54,49 +36,6 @@ router.post('/', async (req, res) => {
   } catch (error) {
     console.error('Error creating unit:', error);
     res.status(500).json({ error: 'Error creating unit' });
-  }
-});
-
-// UPDATE unit
-router.put('/:id', async (req, res) => {
-  try {
-    const { unitNumber, status } = req.body;
-    const unit = await prisma.unit.update({
-      where: { id: parseInt(req.params.id) },
-      data: { unitNumber, status },
-    });
-    res.json(unit);
-  } catch (error) {
-    console.error('Error updating unit:', error);
-    res.status(500).json({ error: 'Error updating unit' });
-  }
-});
-
-// ASSIGN tenant to unit
-router.put('/:id/assign-tenant', async (req, res) => {
-  try {
-    const { tenantId } = req.body;
-
-    const unit = await prisma.unit.update({
-      where: { id: parseInt(req.params.id) },
-      data: { tenantId: tenantId ? parseInt(tenantId) : null, status: tenantId ? "occupied" : "vacant" }
-    });
-
-    res.json(unit);
-  } catch (error) {
-    console.error('Error assigning tenant to unit:', error);
-    res.status(500).json({ error: 'Error assigning tenant to unit' });
-  }
-});
-
-// DELETE unit
-router.delete('/:id', async (req, res) => {
-  try {
-    await prisma.unit.delete({ where: { id: parseInt(req.params.id) } });
-    res.json({ message: 'Unit deleted' });
-  } catch (error) {
-    console.error('Error deleting unit:', error);
-    res.status(500).json({ error: 'Error deleting unit' });
   }
 });
 

@@ -5,7 +5,6 @@ import { useState } from 'react'
 import Modal from '../../components/ui/Modal'
 import EditTenantForm from '../../components/forms/EditTenantForm'
 import TenantForm from '../../components/forms/TenantForm'
-import AssignTenantForm from '../../components/forms/AssignTenantForm'
 import { listUnits } from '../../api/units'
 
 export default function Tenants() {
@@ -109,13 +108,6 @@ export default function Tenants() {
         >
           Add Tenant
         </button>
-
-        <button
-          className="text-black px-3 py-2 rounded"
-          onClick={() => setOpen(o => ({ ...o, assign: true }))}
-        >
-          Assign/ Unassign Unit
-        </button>
       </div>
         
       <Modal
@@ -164,17 +156,6 @@ export default function Tenants() {
         <TenantForm onClose={() => setOpen(o => ({ ...o, tenant: false }))} />
       </Modal>
 
-      <Modal
-        title="Assign Tenant to Unit"
-        open={open.assign}
-        onClose={() => setOpen(o => ({ ...o, assign: false }))}
-      >
-        <AssignTenantForm
-          tenants={tenants}
-          units={units}
-          onClose={() => setOpen(o => ({ ...o, assign: false }))}
-        />
-      </Modal>
     </div>
   )
 }

@@ -1,7 +1,6 @@
 const { Router } = require('express')
 const { PrismaClient } = require('@prisma/client')
-const { recalcRentBillPaidStatus } = require('../lib/rentBill.recalc')
-const { recalcWaterBillPaidStatus } = require('../lib/recalcWaterBillPaidStatus')
+
 const { applyPayment } = require('../lib/applyPayments') // central allocator
 
 const prisma = new PrismaClient()
@@ -329,15 +328,6 @@ paymentsRouter.delete('/:id', async (req, res) => {
       await tx.payment.delete({
         where: { id }
       })
-
-      // Recalculate affected bills
-      for (const billId of affectedRentBills) {
-        await recalcRentBillPaidStatus(billId, tx)
-      }
-
-      for (const billId of affectedWaterBills) {
-        await recalcWaterBillPaidStatus(billId, tx)
-      }
 
       return {
         deletedPaymentId: id,

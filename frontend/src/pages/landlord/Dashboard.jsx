@@ -11,8 +11,6 @@ import Modal from '../../components/ui/Modal'
 import TenantForm from '../../components/forms/TenantForm'
 import UnitForm from '../../components/forms/UnitForm'
 import WaterBillForm from '../../components/forms/WaterBillForm'
-import AssignTenantForm from '../../components/forms/AssignTenantForm'
-
 import { formatMoney } from '../../components/utils/format'
 
 export default function Dashboard() {
@@ -129,19 +127,6 @@ export default function Dashboard() {
           Add Unit
         </button>
 
-        <button
-          className="text-black px-3 py-2 rounded"
-          onClick={() => setOpen(o => ({ ...o, water: true }))}
-        >
-          Record Water Reading
-        </button>
-
-        <button
-          className="text-black px-3 py-2 rounded"
-          onClick={() => setOpen(o => ({ ...o, assign: true }))}
-        >
-          Assign/ Unassign Unit
-        </button>
       </div>
 
       {/* ================= Modals ================= */}
@@ -167,18 +152,6 @@ export default function Dashboard() {
         onClose={() => setOpen(o => ({ ...o, water: false }))}
       >
         <WaterBillForm onClose={() => setOpen(o => ({ ...o, water: false }))} />
-      </Modal>
-
-      <Modal
-        title="Assign Tenant to Unit"
-        open={open.assign}
-        onClose={() => setOpen(o => ({ ...o, assign: false }))}
-      >
-        <AssignTenantForm
-          tenants={tenants}
-          units={units}
-          onClose={() => setOpen(o => ({ ...o, assign: false }))}
-        />
       </Modal>
     </div>
   )

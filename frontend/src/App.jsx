@@ -4,7 +4,7 @@ import Sidebar from './components/layout/Sidebar'
 import Header from './components/layout/Header'
 import Dashboard from './pages/landlord/Dashboard'
 import Tenants from './pages/landlord/Tenants'
-import Units from './pages/landlord/Units'
+
 import WaterBills from './pages/landlord/WaterBills'
 import Rent from './pages/landlord/Rent'
 import Maintenance from './pages/landlord/Maintenance'
@@ -30,7 +30,6 @@ function App() {
               {/* Landlord */}
               <Route path="/landlord/dashboard" element={<Dashboard />} />
               <Route path="/landlord/tenants" element={<Tenants />} />
-              <Route path="/landlord/units" element={<Units />} />
               <Route path="/landlord/water-bills" element={<WaterBills />} />
               <Route path="/landlord/rent" element={<Rent />} />
               <Route path="/landlord/maintenance" element={<Maintenance />} />

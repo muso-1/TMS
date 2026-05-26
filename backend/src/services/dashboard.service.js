@@ -4,34 +4,48 @@ const prisma = require('../lib/prisma')
 // Returns: { rent: number, water: number }
 // Always returns both keys, even when there are no allocations.
 // ------------------------------------------------------------
-async function getAllocationSumsByBillPeriod(from, to) {
-  const rows = await prisma.paymentAllocation.groupBy({
-    by: ['billType'],
-    where: {
-      billType: { in: ['rent', 'water'] },
-      OR: [
-        {
-          rentBill: {
-            dueDate: {
-              gte: from,
-              lte: to
-            }
-          }
+async function getAllocationSumsByBillPeriod(
+  from,
+  to
+) {
+  const rows =
+    await prisma.paymentAllocation.groupBy({
+      by: ['billType'],
+
+      where: {
+        billType: {
+          in: ['rent', 'water']
         },
-        {
-          waterBill: {
-            dueDate: {
-              gte: from,
-              lte: to
+
+        OR: [
+          {
+            rentBill: {
+              isVoided: false,
+
+              dueDate: {
+                gte: from,
+                lte: to
+              }
+            }
+          },
+
+          {
+            waterBill: {
+              isVoided: false,
+
+              dueDate: {
+                gte: from,
+                lte: to
+              }
             }
           }
-        }
-      ]
-    },
-    _sum: {
-      amount: true
-    }
-  })
+        ]
+      },
+
+      _sum: {
+        amount: true
+      }
+    })
 
   const result = {
     rent: 0,
@@ -39,8 +53,12 @@ async function getAllocationSumsByBillPeriod(from, to) {
   }
 
   for (const row of rows || []) {
-    if (row.billType === 'rent' || row.billType === 'water') {
-      result[row.billType] = row._sum?.amount ?? 0
+    if (
+      row.billType === 'rent' ||
+      row.billType === 'water'
+    ) {
+      result[row.billType] =
+        row._sum?.amount ?? 0
     }
   }
 
@@ -54,6 +72,7 @@ async function getAllocationSumsByBillPeriod(from, to) {
 async function getRentBilled(from, to) {
   const agg = await prisma.rentBill.aggregate({
     where: {
+      isVoided: false,
       dueDate: {
         gte: from,
         lte: to
@@ -74,6 +93,8 @@ async function getRentBilled(from, to) {
 async function getRentBillsInPeriod(from, to) {
   const bills = await prisma.rentBill.findMany({
     where: {
+      isVoided: false,
+
       dueDate: {
         gte: from,
         lte: to
@@ -99,6 +120,9 @@ async function getRentAllocationsByBill() {
       billType: 'rent',
       rentBillId: {
         not: null
+      },
+      rentBill: {
+        isVoided: false
       }
     },
     _sum: {

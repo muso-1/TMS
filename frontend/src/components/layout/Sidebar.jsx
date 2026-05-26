@@ -10,7 +10,6 @@ export default function Sidebar() {
       <nav className="p-2 space-y-1">
         <div className="px-4 text-xs uppercase text-gray-500">Landlord</div>
         <NavLink className={({isActive})=> `${base} ${isActive?active:''}`} to="/landlord/dashboard">Dashboard</NavLink>
-        <NavLink className={({isActive})=> `${base} ${isActive?active:''}`} to="/landlord/units">Units</NavLink>
         <NavLink className={({isActive})=> `${base} ${isActive?active:''}`} to="/landlord/tenants">Tenants</NavLink>
         <NavLink className={({isActive})=> `${base} ${isActive?active:''}`} to="/landlord/leases">Leases</NavLink>
         <NavLink className={({isActive})=> `${base} ${isActive?active:''}`} to="/landlord/water-bills">Water Bills</NavLink>
