@@ -49,26 +49,68 @@ export default function Tenants() {
 
   const columns = [
     { key: 'name', header: 'Name' },
+
     { key: 'email', header: 'Email' },
+
     { key: 'phone', header: 'Phone' },
+
     {
       key: 'unitNumber',
       header: 'Unit',
-      cell: tenant => tenant.units?.[0]?.unitNumber ?? 'Not Assigned'
+      cell: tenant =>
+        tenant.units?.[0]?.unitNumber ?? 'Not Assigned'
     },
+
     {
-      key: 'totalPaid',
-      header: 'Total Paid',
-      cell: t => <span>{t.totalPaid?.toFixed(2) ?? 0}</span>
+      key: 'totalRentBilled',
+      header: 'Rent Billed',
+      cell: t => (
+        <span>
+          {t.totalRentBilled?.toFixed(2) ?? '0.00'}
+        </span>
+      )
     },
+
     {
-      key: 'balance',
-      header: 'Balance',
-      cell: t => <span>{t.balance?.toFixed(2) ?? 0}</span>
+      key: 'totalRentPaid',
+      header: 'Rent Paid',
+      cell: t => (
+        <span className="text-green-600">
+          {t.totalRentPaid?.toFixed(2) ?? '0.00'}
+        </span>
+      )
     },
+
+    {
+      key: 'outstandingRent',
+      header: 'Outstanding Rent',
+      cell: t => (
+        <span
+          className={
+            t.outstandingRent > 0
+              ? 'text-red-600 font-medium'
+              : 'text-green-600'
+          }
+        >
+          {t.outstandingRent?.toFixed(2) ?? '0.00'}
+        </span>
+      )
+    },
+
+    {
+      key: 'tenantBalance',
+      header: 'Account Balance',
+      cell: t => (
+        <span>
+          {t.balance?.toFixed(2) ?? '0.00'}
+        </span>
+      )
+    },
+
     {
       key: 'actions',
       header: 'Actions',
+
       cell: tenant => (
         <div className="space-x-2">
           <button
@@ -77,6 +119,7 @@ export default function Tenants() {
           >
             Edit
           </button>
+
           <button
             className="text-green-500 underline"
             onClick={() => fetchPayments(tenant.id)}
@@ -86,7 +129,7 @@ export default function Tenants() {
         </div>
       )
     }
-  ]
+  ] 
 
   if (isLoading) return <div>Loading…</div>
 

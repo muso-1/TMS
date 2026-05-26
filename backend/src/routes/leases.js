@@ -85,53 +85,121 @@ leasesRouter.get('/:id', async (req, res) => {
 
 leasesRouter.patch('/:id', async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    const { startDate, endDate, monthlyRent, status } = req.body;
+    const id = Number(req.params.id)
 
-    const updatedLease = await prisma.$transaction(async (tx) => {
+    const {
+      startDate,
+      endDate,
+      monthlyRent,
+      status,
+      unitId
+    } = req.body
 
-      // 1. Update lease
+    const updatedLease = await prisma.$transaction(async tx => {
+
+      // 1. Get current lease
+      const existingLease = await tx.lease.findUnique({
+        where: { id }
+      })
+
+      if (!existingLease) {
+        throw new Error('Lease not found')
+      }
+
+      const oldUnitId = existingLease.unitId
+      const newUnitId = unitId
+        ? Number(unitId)
+        : existingLease.unitId
+
+      // 2. Prevent assigning occupied unit
+      if (newUnitId !== oldUnitId) {
+
+        const targetUnit = await tx.unit.findUnique({
+          where: { id: newUnitId }
+        })
+
+        if (!targetUnit) {
+          throw new Error('Target unit not found')
+        }
+
+        if (
+          targetUnit.status === 'occupied' &&
+          targetUnit.tenantId !== existingLease.tenantId
+        ) {
+          throw new Error('Unit is already occupied')
+        }
+      }
+
+      // 3. Update lease
       const lease = await tx.lease.update({
         where: { id },
         data: {
-          startDate: startDate ? new Date(startDate) : undefined,
-          endDate: endDate ? new Date(endDate) : undefined,
-          monthlyRent: monthlyRent !== undefined ? Number(monthlyRent) : undefined,
-          status: status ?? undefined
-        }
-      });
+          startDate: startDate
+            ? new Date(startDate)
+            : undefined,
 
-      // 2. Sync unit based on lease status
-      if (status === 'terminated' || status === 'expired') {
+          endDate: endDate
+            ? new Date(endDate)
+            : undefined,
+
+          monthlyRent:
+            monthlyRent !== undefined
+              ? Number(monthlyRent)
+              : undefined,
+
+          status: status ?? undefined,
+
+          unitId: newUnitId
+        }
+      })
+
+      // 4. If unit changed → vacate old unit
+      if (newUnitId !== oldUnitId) {
         await tx.unit.update({
-          where: { id: lease.unitId },
+          where: { id: oldUnitId },
           data: {
             tenantId: null,
             status: 'vacant'
           }
-        });
+        })
       }
 
-      if (status === 'active') {
+      // 5. Sync new/current unit based on lease status
+      if (status === 'terminated' || status === 'expired') {
+
         await tx.unit.update({
-          where: { id: lease.unitId },
+          where: { id: newUnitId },
+          data: {
+            tenantId: null,
+            status: 'vacant'
+          }
+        })
+
+      } else {
+
+        await tx.unit.update({
+          where: { id: newUnitId },
           data: {
             tenantId: lease.tenantId,
             status: 'occupied'
           }
-        });
+        })
       }
 
-      return lease;
-    });
+      return lease
+    })
 
-    res.json(updatedLease);
+    res.json(updatedLease)
 
   } catch (e) {
-    console.error('Error updating lease:', e);
-    res.status(500).json({ error: e.message });
+
+    console.error('Error updating lease:', e)
+
+    res.status(500).json({
+      error: e.message
+    })
   }
-});
+})
 
 // Delete a lease
 // Also deletes rent bills under this lease id cascade is configured

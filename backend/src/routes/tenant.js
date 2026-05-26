@@ -21,13 +21,116 @@ router.post('/', async (req, res) => {
   }
 });
 
-// READ all tenants with totalPaid and balance
+// READ all tenants with rent statistics
 router.get('/', async (req, res) => {
   try {
     const tenants = await prisma.tenant.findMany({
       include: {
         units: true,
         balance: true,
+
+        // leases -> rent bills
+        leases: {
+          include: {
+            rentBills: {
+              select: {
+                amount: true
+              }
+            }
+          }
+        },
+
+        // payments -> allocations
+        payments: {
+          include: {
+            allocations: {
+              where: {
+                billType: 'rent'
+              },
+              select: {
+                amount: true
+              }
+            }
+          }
+        }
+      }
+    })
+
+    const result = tenants.map(t => {
+
+      // ALL rent bills across leases
+      const rentBills = t.leases.flatMap(
+        lease => lease.rentBills
+      )
+
+      // total rent billed
+      const totalRentBilled = rentBills.reduce(
+        (sum, bill) => sum + bill.amount,
+        0
+      )
+
+      // ALL rent allocations across payments
+      const rentAllocations = t.payments.flatMap(
+        payment => payment.allocations
+      )
+
+      // total paid toward rent only
+      const totalRentPaid = rentAllocations.reduce(
+        (sum, allocation) => sum + allocation.amount,
+        0
+      )
+
+      // derived outstanding rent
+      const outstandingRent =
+        totalRentBilled - totalRentPaid
+
+      return {
+        id: t.id,
+        name: t.name,
+        email: t.email,
+        phone: t.phone,
+
+        units: t.units,
+
+        balance: t.balance?.balance ?? 0,
+
+        totalRentBilled,
+        totalRentPaid,
+        outstandingRent
+      }
+    })
+
+    res.json(result)
+
+  } catch (error) {
+    console.error('Error fetching tenants:', error)
+
+    res.status(500).json({
+      error: 'Error fetching tenants'
+    })
+  }
+})
+
+
+// READ tenant by ID with totalPaid and balance
+// READ all tenants with totalPaid and outstanding rent
+router.get('/', async (req, res) => {
+  try {
+    const tenants = await prisma.tenant.findMany({
+      include: {
+        units: true,
+        balance: true,
+
+        leases: {
+          include: {
+            rentBills: {
+              select: {
+                amount: true
+              }
+            }
+          }
+        },
+
         payments: {
           select: {
             amount: true
@@ -37,67 +140,52 @@ router.get('/', async (req, res) => {
     })
 
     const result = tenants.map(t => {
-      const totalPaid = t.payments.reduce((sum, p) => sum + p.amount, 0)
+      // total paid
+      const totalPaid = t.payments.reduce(
+        (sum, p) => sum + p.amount,
+        0
+      )
+
+      // all rent bills across all leases
+      const rentBills = t.leases.flatMap(
+        lease => lease.rentBills
+      )
+
+      // total billed rent
+      const totalBilled = rentBills.reduce(
+        (sum, bill) => sum + bill.amount,
+        0
+      )
+
+      // derived outstanding rent
+      const outstandingRent = totalBilled - totalPaid
 
       return {
         id: t.id,
         name: t.name,
         email: t.email,
         phone: t.phone,
+
         units: t.units,
+
         balance: t.balance?.balance ?? 0,
-        totalPaid
+
+        totalBilled,
+        totalPaid,
+        outstandingRent
       }
     })
 
     res.json(result)
+
   } catch (error) {
     console.error('Error fetching tenants:', error)
-    res.status(500).json({ error: 'Error fetching tenants' })
+
+    res.status(500).json({
+      error: 'Error fetching tenants'
+    })
   }
 })
-
-
-// READ tenant by ID with totalPaid and balance
-router.get('/:id', async (req, res) => {
-  try {
-    const tenantId = Number(req.params.id)
-
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: tenantId },
-      include: {
-        units: true,
-        balance: true,
-        leases: {
-          include: {
-            unit: true,
-            rentBills: true
-          }
-        },
-        waterBills: true
-      }
-    })
-
-    if (!tenant) {
-      return res.status(404).json({ error: 'Tenant not found' })
-    }
-
-    res.json({
-      id: tenant.id,
-      name: tenant.name,
-      email: tenant.email,
-      phone: tenant.phone,
-      units: tenant.units,
-      leases: tenant.leases,
-      waterBills: tenant.waterBills,
-      balance: tenant.balance?.balance ?? 0
-    })
-  } catch (error) {
-    console.error('Error fetching tenant:', error)
-    res.status(500).json({ error: 'Error fetching tenant' })
-  }
-})
-
 // GET all payments for a tenant
 router.get('/:id/payments', async (req, res) => {
   try {

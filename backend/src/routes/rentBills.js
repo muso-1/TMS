@@ -52,11 +52,6 @@ function buildRentBillResponse(
         ? rawBalance
         : 0,
 
-    credit:
-      rawBalance < 0
-        ? Math.abs(rawBalance)
-        : 0,
-
     // REMINDERS
     reminderSent:
       bill.reminderSent,

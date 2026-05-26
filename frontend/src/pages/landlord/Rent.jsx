@@ -175,8 +175,8 @@ export default function Rent() {
     },
 
     {
-      key: 'balance',
-      header: 'Balance',
+      key: 'outstanding',
+      header: 'Outstanding Rent',
 
       cell: (r) =>
         formatMoney(r.balance || 0),
