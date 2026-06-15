@@ -1,106 +1,171 @@
-const express = require('express');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const router = express.Router();
+const express = require('express')
+const { PrismaClient } = require('@prisma/client')
 
-// CREATE tenant
+const prisma = new PrismaClient()
+const router = express.Router()
+
+// ======================================================
+// CREATE TENANT
+// ======================================================
 router.post('/', async (req, res) => {
   try {
-    const { name, email, phone } = req.body;
+    const { name, email, phone } = req.body
+
     if (!name || !email) {
-      return res.status(400).json({ error: 'Name and email are required' });
+      return res.status(400).json({
+        error: 'Name and email are required'
+      })
     }
 
     const tenant = await prisma.tenant.create({
       data: { name, email, phone }
-    });
+    })
 
-    res.status(201).json(tenant);
+    res.status(201).json(tenant)
+
   } catch (error) {
-    res.status(500).json({ error: 'Error creating tenant' });
+    console.error(error)
+    res.status(500).json({
+      error: 'Error creating tenant'
+    })
   }
-});
+})
 
-// READ all tenants with rent statistics
+
+// ======================================================
+// LIST TENANTS (LEDGER-CORRECT FINANCIAL MODEL)
+// ======================================================
 router.get('/', async (req, res) => {
   try {
+
     const tenants = await prisma.tenant.findMany({
       include: {
         units: true,
-        balance: true,
 
-        // leases -> rent bills
         leases: {
           include: {
             rentBills: {
+              where: { isVoided: false },
               select: {
+                id: true,
                 amount: true
               }
             }
           }
-        },
+        }
+      }
+    })
 
-        // payments -> allocations
-        payments: {
+    const results = await Promise.all(
+      tenants.map(async (t) => {
+
+        // -------------------------------------------------
+        // BILL SIDE (snapshot ONLY for structure, NOT totals)
+        // -------------------------------------------------
+        const rentBills = t.leases.flatMap(l => l.rentBills)
+        const billIds = rentBills.map(b => b.id)
+
+        const totalBilled = rentBills.reduce(
+          (sum, b) => sum + (b.amount || 0),
+          0
+        )
+
+        // -------------------------------------------------
+        // LEDGER SIDE (SOURCE OF TRUTH)
+        // -------------------------------------------------
+        const allocations = await prisma.paymentAllocation.findMany({
+          where: {
+            rentBillId: { in: billIds },
+            isReversed: false
+          },
+          select: {
+            amount: true,
+            rentBillId: true
+          }
+        })
+
+        const paidMap = new Map()
+
+        for (const a of allocations) {
+          paidMap.set(
+            a.rentBillId,
+            (paidMap.get(a.rentBillId) || 0) + a.amount
+          )
+        }
+
+        let totalRentPaid = 0
+        let outstandingRent = 0
+
+        for (const bill of rentBills) {
+          const paid = paidMap.get(bill.id) || 0
+
+          totalRentPaid += paid
+          outstandingRent += Math.max(bill.amount - paid, 0)
+        }
+
+        // -------------------------------------------------
+        // PAYMENT LEDGER (GLOBAL TENANT VIEW)
+        // -------------------------------------------------
+        const payments = await prisma.payment.findMany({
+          where: {
+            tenantId: t.id,
+            isReversed: false
+          },
           include: {
             allocations: {
               where: {
-                billType: 'rent'
-              },
-              select: {
-                amount: true
+                isReversed: false
               }
             }
           }
+        })
+
+        const totalPaid = payments.reduce(
+          (sum, p) => sum + (p.amountReceived || 0),
+          0
+        )
+
+        const totalAllocated = payments.reduce(
+          (sum, p) =>
+            sum + p.allocations.reduce(
+              (s, a) => s + (a.amount || 0),
+              0
+            ),
+          0
+        )
+
+        const creditBalance = Math.max(
+          totalPaid - totalAllocated,
+          0
+        )
+
+        // -------------------------------------------------
+        // FINAL RESPONSE
+        // -------------------------------------------------
+        return {
+          id: t.id,
+          name: t.name,
+          email: t.email,
+          phone: t.phone,
+
+          units: t.units,
+
+          // BILLING VIEW (UI convenience ONLY)
+          totalBilled,
+
+          // LEDGER-DERIVED BILLING TRUTH
+          totalRentPaid,
+          outstandingRent,
+
+          // LEDGER (GLOBAL TENANT FINANCIAL STATE)
+          totalPaid,
+          totalAllocated,
+          creditBalance
         }
-      }
-    })
+      })
+    )
 
-    const result = tenants.map(t => {
-
-      // ALL rent bills across leases
-      const rentBills = t.leases.flatMap(
-        lease => lease.rentBills
-      )
-
-      // total rent billed
-      const totalRentBilled = rentBills.reduce(
-        (sum, bill) => sum + bill.amount,
-        0
-      )
-
-      // ALL rent allocations across payments
-      const rentAllocations = t.payments.flatMap(
-        payment => payment.allocations
-      )
-
-      // total paid toward rent only
-      const totalRentPaid = rentAllocations.reduce(
-        (sum, allocation) => sum + allocation.amount,
-        0
-      )
-
-      // derived outstanding rent
-      const outstandingRent =
-        totalRentBilled - totalRentPaid
-
-      return {
-        id: t.id,
-        name: t.name,
-        email: t.email,
-        phone: t.phone,
-
-        units: t.units,
-
-        balance: t.balance?.balance ?? 0,
-
-        totalRentBilled,
-        totalRentPaid,
-        outstandingRent
-      }
-    })
-
-    res.json(result)
+    res.json(results)
 
   } catch (error) {
     console.error('Error fetching tenants:', error)
@@ -112,119 +177,63 @@ router.get('/', async (req, res) => {
 })
 
 
-// READ tenant by ID with totalPaid and balance
-// READ all tenants with totalPaid and outstanding rent
-router.get('/', async (req, res) => {
-  try {
-    const tenants = await prisma.tenant.findMany({
-      include: {
-        units: true,
-        balance: true,
-
-        leases: {
-          include: {
-            rentBills: {
-              select: {
-                amount: true
-              }
-            }
-          }
-        },
-
-        payments: {
-          select: {
-            amount: true
-          }
-        }
-      }
-    })
-
-    const result = tenants.map(t => {
-      // total paid
-      const totalPaid = t.payments.reduce(
-        (sum, p) => sum + p.amount,
-        0
-      )
-
-      // all rent bills across all leases
-      const rentBills = t.leases.flatMap(
-        lease => lease.rentBills
-      )
-
-      // total billed rent
-      const totalBilled = rentBills.reduce(
-        (sum, bill) => sum + bill.amount,
-        0
-      )
-
-      // derived outstanding rent
-      const outstandingRent = totalBilled - totalPaid
-
-      return {
-        id: t.id,
-        name: t.name,
-        email: t.email,
-        phone: t.phone,
-
-        units: t.units,
-
-        balance: t.balance?.balance ?? 0,
-
-        totalBilled,
-        totalPaid,
-        outstandingRent
-      }
-    })
-
-    res.json(result)
-
-  } catch (error) {
-    console.error('Error fetching tenants:', error)
-
-    res.status(500).json({
-      error: 'Error fetching tenants'
-    })
-  }
-})
-// GET all payments for a tenant
+// ======================================================
+// TENANT PAYMENTS (LEDGER SAFE)
+// ======================================================
 router.get('/:id/payments', async (req, res) => {
   try {
+
     const tenantId = Number(req.params.id)
 
     const payments = await prisma.payment.findMany({
       where: { tenantId },
+
       include: {
-        allocations: true
+        allocations: {
+          where: { isReversed: false }
+        }
       },
-      orderBy: { paidAt: 'desc' }
+
+      orderBy: {
+        paidAt: 'desc'
+      }
     })
 
     res.json(payments)
+
   } catch (error) {
-    console.error('Error fetching tenant payments:', error)
-    res.status(500).json({ error: 'Failed to fetch tenant payments' })
+    console.error(error)
+
+    res.status(500).json({
+      error: 'Failed to fetch tenant payments'
+    })
   }
 })
 
+
+// ======================================================
+// UPDATE TENANT
+// ======================================================
 router.patch('/:id', async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    const { name, email, phone } = req.body;
+
+    const id = Number(req.params.id)
+    const { name, email, phone } = req.body
 
     const tenant = await prisma.tenant.update({
-      where: {id},
-      data: {
-        name: name,
-        email: email,
-        phone: phone,
-      }
+      where: { id },
+      data: { name, email, phone }
     })
-    
+
     res.json(tenant)
-  } catch (e) {
-    console.error('Error updating tenant:', e);
-    res.status(500).json({ error: e.message });
+
+  } catch (error) {
+    console.error(error)
+
+    res.status(500).json({
+      error: error.message
+    })
   }
 })
 
-module.exports = router;
+module.exports = router

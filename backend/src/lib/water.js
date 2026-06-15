@@ -2,18 +2,12 @@ const { PrismaClient } = require('@prisma/client')
 
 const prisma = new PrismaClient()
 
-async function getLatestUnitReading(unitId, tx = prisma) {
-  const latest = await tx.waterMeterReading.findFirst({
-    where: { 
-        unitId,
-        isVoided: false,
-     },
-    orderBy: {
-      readingDate: 'desc',
-    },
+async function getWaterRate(tx = prisma) {
+  const config = await tx.systemConfig.findUnique({
+    where: { key: 'WATER_DEFAULT_RATE' },
   })
 
-  return latest?.reading ?? 0
+  return Number(config?.value ?? 350)
 }
 
 async function getActiveLeaseForUnit(unitId, tx = prisma) {
@@ -30,6 +24,6 @@ async function getActiveLeaseForUnit(unitId, tx = prisma) {
 }
 
 module.exports = {
-  getLatestUnitReading,
+  getWaterRate,
   getActiveLeaseForUnit,
 }

@@ -4,19 +4,11 @@ const router = express.Router()
 const { resolvePeriod } = require('../lib/period')
 
 const {
-  getAllocationSumsByBillPeriod,
-  getRentBilled,
-  getRentBillsInPeriod,
-  getRentAllocationsByBill,
-  classifyRentBills
+  getBillSumsByPeriod,
+  getRentSummary,
+  getWaterSummary,
 } = require('../services/dashboard.service')
 
-/*
-  Dashboard summary endpoint
-  - Collections: allocations tied to bills due in period
-  - Rent billed: rent due in period
-  - Rent bill stats: lifetime payment status per rent bill
- */
 router.get('/summary', async (req, res) => {
   try {
     const { from, to } = resolvePeriod(req)
@@ -24,43 +16,80 @@ router.get('/summary', async (req, res) => {
     console.log('Dashboard period:', { from, to })
 
     const [
-      allocationSums,
-      rentBilled,
-      rentBills,
-      rentAllocationsByBill
+      ledgerSums,
+      rentSnapshot,
+      waterSnapshot,
     ] = await Promise.all([
-      getAllocationSumsByBillPeriod(from, to),
-      getRentBilled(from, to),
-      getRentBillsInPeriod(from, to),
-      getRentAllocationsByBill()
+      getBillSumsByPeriod(from, to),
+      getRentSummary(from, to),
+      getWaterSummary(from, to),
     ])
 
-    const rentStats = classifyRentBills(rentBills, rentAllocationsByBill)
+    // =====================================================
+    // LEDGER (SOURCE OF TRUTH FOR MONEY FLOW)
+    // =====================================================
+    const rentCollections = ledgerSums?.rentPaid ?? 0
+    const waterCollections = ledgerSums?.waterPaid ?? 0
 
+    const collections = {
+      rent: rentCollections,
+      water: waterCollections,
+      total: rentCollections + waterCollections,
+    }
+
+    // =====================================================
+    // RENT SNAPSHOT (BILL STATE)
+    // =====================================================
+    const rent = {
+      billed: rentSnapshot?.billed ?? 0,
+      paid: rentSnapshot?.paid ?? 0,
+      outstanding: rentSnapshot?.outstanding ?? 0,
+    }
+
+    const rentBills = {
+      fullyPaid: rentSnapshot?.fullyPaid ?? 0,
+      partiallyPaid: rentSnapshot?.partiallyPaid ?? 0,
+      unpaid: rentSnapshot?.unpaid ?? 0,
+      overdue: rentSnapshot?.overdue ?? 0,
+    }
+
+    // =====================================================
+    // WATER SNAPSHOT (BILL STATE)
+    // =====================================================
+    const water = {
+      billed: waterSnapshot?.billed ?? 0,
+      paid: waterSnapshot?.paid ?? 0,
+      outstanding: waterSnapshot?.outstanding ?? 0,
+    }
+
+    const waterBills = {
+      fullyPaid: waterSnapshot?.fullyPaid ?? 0,
+      partiallyPaid: waterSnapshot?.partiallyPaid ?? 0,
+      unpaid: waterSnapshot?.unpaid ?? 0,
+      overdue: waterSnapshot?.overdue ?? 0,
+    }
+
+    // =====================================================
+    // RESPONSE (CLEAR HYBRID SEPARATION)
+    // =====================================================
     res.json({
       period: { from, to },
 
-      collections: {
-        rent: allocationSums.rent,
-        water: allocationSums.water,
-        total: allocationSums.rent + allocationSums.water
-      },
+      collections, // ledger-only
 
-      rent: {
-        billed: rentBilled,
-        paid: rentStats.totalPaid,
-        outstanding: rentBilled - rentStats.totalPaid
-      },
+      rent,
+      water,
 
-      rentBills: {
-        fullyPaid: rentStats.fullyPaid,
-        partiallyPaid: rentStats.partiallyPaid,
-        unpaid: rentStats.unpaid
-      }
+      rentBills,
+      waterBills,
     })
+
   } catch (e) {
     console.error('Dashboard summary error:', e)
-    res.status(500).json({ error: e.message })
+
+    res.status(500).json({
+      error: e.message,
+    })
   }
 })
 

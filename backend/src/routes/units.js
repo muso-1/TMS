@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 // GET all units
 router.get('/', async (req, res) => {
   try {
-    const units = await prisma.unit.findMany({ include: { tenant: true } });
+    const units = await prisma.unit.findMany({ include: { tenant: true, leases: true, } });
 
     // Derive status dynamically
     const normalized = units.map((u) => ({
