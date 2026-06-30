@@ -23,10 +23,17 @@ const waterBillingEngine = require('../services/waterBillingEngine')
 const prisma = new PrismaClient()
 const router = express.Router()
 
+const authenticate =
+  require('../middleware/authenticate')
+
+const {
+  requirePermission
+} = require('../middleware/permissions')
+
 // ======================================================
 // CREATE WATER BILLS
 // ======================================================
-router.post('/', async (req, res) => {
+router.post('/', authenticate, requirePermission('CREATE_BILL'), async (req, res) => {
   try {
 
     const billsData = Array.isArray(req.body)
@@ -80,6 +87,7 @@ router.post('/', async (req, res) => {
 // ======================================================
 router.get(
   '/unit/:unitId/latest-reading',
+  authenticate,
   async (req, res) => {
 
     try {
@@ -151,7 +159,7 @@ router.get('/config/water-rate', async (req, res) => {
 // ======================================================
 // LIST WATER BILLS
 // ======================================================
-router.get('/', async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
 
   try {
 
@@ -192,7 +200,7 @@ router.get('/', async (req, res) => {
 // ======================================================
 // GET SINGLE WATER BILL
 // ======================================================
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticate, async (req, res) => {
 
   try {
 
@@ -256,7 +264,7 @@ router.get('/:id', async (req, res) => {
 // ======================================================
 // UPDATE WATER BILL
 // ======================================================
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticate, requirePermission('UPDATE_BILL'), async (req, res) => {
 
   try {
 
@@ -362,7 +370,7 @@ router.put('/:id', async (req, res) => {
 // ======================================================
 // VOID WATER BILL
 // ======================================================
-router.patch('/:id/void', async (req, res) => {
+router.patch('/:id/void', authenticate, requirePermission('VOID_BILL'), async (req, res) => {
 
   try {
 

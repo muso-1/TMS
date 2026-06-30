@@ -14,6 +14,13 @@ const {
   syncPaymentFinancials
 } = require('../services/syncPaymentFinancials')
 
+const authenticate =
+  require('../middleware/authenticate')
+
+const {
+  requirePermission
+} = require('../middleware/permissions')
+
 const prisma = new PrismaClient()
 const rentBillsRouter = Router()
 
@@ -21,7 +28,7 @@ const rentBillsRouter = Router()
 // LIST RENT BILLS
 // =====================================================
 
-rentBillsRouter.get('/', async (req, res) => {
+rentBillsRouter.get('/', authenticate, async (req, res) => {
   try {
 
     const bills = await prisma.rentBill.findMany({
@@ -61,7 +68,7 @@ rentBillsRouter.get('/', async (req, res) => {
 // GET SINGLE RENT BILL
 // =====================================================
 
-rentBillsRouter.get('/:id', async (req, res) => {
+rentBillsRouter.get('/:id', authenticate, async (req, res) => {
   try {
 
     const id = Number(req.params.id)
@@ -118,7 +125,7 @@ rentBillsRouter.get('/:id', async (req, res) => {
 // CREATE RENT BILL
 // =====================================================
 
-rentBillsRouter.post('/', async (req, res) => {
+rentBillsRouter.post('/', authenticate, requirePermission('CREATE_BILL'), async (req, res) => {
   try {
 
     const {
@@ -208,7 +215,7 @@ rentBillsRouter.post('/', async (req, res) => {
 // VOID RENT BILL
 // =====================================================
 
-rentBillsRouter.patch('/:id/void', async (req, res) => {
+rentBillsRouter.patch('/:id/void', authenticate, requirePermission('VOID_BILL'), async (req, res) => {
   try {
 
     const id = Number(req.params.id)

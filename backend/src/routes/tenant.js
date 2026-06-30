@@ -4,10 +4,13 @@ const { PrismaClient } = require('@prisma/client')
 const prisma = new PrismaClient()
 const router = express.Router()
 
+const authenticate =
+  require('../middleware/authenticate')
+  
 // ======================================================
 // CREATE TENANT
 // ======================================================
-router.post('/', async (req, res) => {
+router.post('/', authenticate, async (req, res) => {
   try {
     const { name, email, phone } = req.body
 
@@ -35,7 +38,7 @@ router.post('/', async (req, res) => {
 // ======================================================
 // LIST TENANTS (LEDGER-CORRECT FINANCIAL MODEL)
 // ======================================================
-router.get('/', async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
   try {
 
     const tenants = await prisma.tenant.findMany({
@@ -180,7 +183,7 @@ router.get('/', async (req, res) => {
 // ======================================================
 // TENANT PAYMENTS (LEDGER SAFE)
 // ======================================================
-router.get('/:id/payments', async (req, res) => {
+router.get('/:id/payments', authenticate, async (req, res) => {
   try {
 
     const tenantId = Number(req.params.id)
@@ -214,7 +217,7 @@ router.get('/:id/payments', async (req, res) => {
 // ======================================================
 // UPDATE TENANT
 // ======================================================
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', authenticate, async (req, res) => {
   try {
 
     const id = Number(req.params.id)

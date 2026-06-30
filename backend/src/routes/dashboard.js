@@ -9,7 +9,9 @@ const {
   getWaterSummary,
 } = require('../services/dashboard.service')
 
-router.get('/summary', async (req, res) => {
+const authenticate = require('../middleware/authenticate')
+
+router.get('/summary', authenticate, async (req, res) => {
   try {
     const { from, to } = resolvePeriod(req)
 

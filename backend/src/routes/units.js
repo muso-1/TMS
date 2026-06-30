@@ -3,8 +3,11 @@ const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+const authenticate =
+  require('../middleware/authenticate')
+  
 // GET all units
-router.get('/', async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
   try {
     const units = await prisma.unit.findMany({ include: { tenant: true, leases: true, } });
 
@@ -23,7 +26,7 @@ router.get('/', async (req, res) => {
 
 
 // CREATE unit
-router.post('/', async (req, res) => {
+router.post('/', authenticate, async (req, res) => {
   try {
     const { unitNumber, status } = req.body;
     const unit = await prisma.unit.create({

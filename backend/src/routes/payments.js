@@ -17,13 +17,20 @@ const {
   syncWaterBillFinancials,
 } = require('../services/syncWaterBillFinancials')
 
+const authenticate =
+  require('../middleware/authenticate')
+
+const {
+  requirePermission
+} = require('../middleware/permissions')
+
 const paymentsRouter = Router()
 
 
 // ======================================================
 // LIST PAYMENTS (FIXED SEARCH + FILTER LOGIC)
 // ======================================================
-paymentsRouter.get('/', async (req, res) => {
+paymentsRouter.get('/',  authenticate, async (req, res) => {
   try {
     const page = Number(req.query.page ?? 1)
 
@@ -162,7 +169,7 @@ paymentsRouter.get('/', async (req, res) => {
 // ======================================================
 // GET SINGLE PAYMENT
 // ======================================================
-paymentsRouter.get('/:id', async (req, res) => {
+paymentsRouter.get('/:id',  authenticate, async (req, res) => {
 
   try {
 
@@ -209,7 +216,7 @@ paymentsRouter.get('/:id', async (req, res) => {
 // ======================================================
 // CREATE PAYMENT
 // ======================================================
-paymentsRouter.post('/', async (req, res) => {
+paymentsRouter.post('/', authenticate, requirePermission('RECORD_PAYMENT'), async (req, res) => {
 
   try {
 
@@ -334,7 +341,7 @@ paymentsRouter.patch('/:id', async (req, res) => {
 // ======================================================
 // REVERSE PAYMENT
 // ======================================================
-paymentsRouter.patch('/:id/reverse', async (req, res) => {
+paymentsRouter.patch('/:id/reverse', authenticate, async (req, res) => {
   try {
 
     const id = Number(req.params.id)
