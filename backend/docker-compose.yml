@@ -1,14 +1,14 @@
-version: '3.9'
 services:
   postgres:
-    image: postgres:16
+    image: postgres:17
     container_name: tenant_pg
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: tenant_user
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: pass
       POSTGRES_DB: tenant_db
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
