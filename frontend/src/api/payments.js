@@ -1,9 +1,31 @@
 import { api } from './client'
 
 // List payments (optionally filtered by tenant or bill)
-export const listPayments = ({ tenantId, rentBillId, waterBillId, page = 1, pageSize = 50 } = {}) =>
+export const listPayments = ({
+  tenantId,
+  rentBillId,
+  waterBillId,
+  search,
+  includeReversed,
+  from,
+  to,
+  page = 1,
+  pageSize = 50,
+} = {}) =>
   api
-    .get('/api/payments', { params: { tenantId, rentBillId, waterBillId, page, pageSize } })
+    .get('/api/payments', {
+      params: {
+        tenantId,
+        rentBillId,
+        waterBillId,
+        search,
+        includeReversed,
+        from,
+        to,
+        page,
+        pageSize,
+      },
+    })
     .then(r => r.data)
 
 // Create payment
@@ -48,6 +70,6 @@ export const createPayment = async ({
 export const updatePayment = (id, data) =>
   api.patch(`/api/payments/${id}`, data).then(r => r.data)
 
-// Delete payment
-export const deletePayment = (id) =>
-  api.delete(`/api/payments/${id}`).then(r => r.data)
+// Reverse payment
+export const reversePayment = (id) =>
+  api.patch(`/api/payments/${id}/reverse`).then(r => r.data)

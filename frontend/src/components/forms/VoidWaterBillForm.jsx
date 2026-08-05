@@ -126,7 +126,7 @@ export default function VoidWaterBillForm({
 
           className="
             bg-red-600
-            text-white
+            text-black
             px-4
             py-2
             rounded

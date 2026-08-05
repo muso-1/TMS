@@ -1,308 +1,362 @@
 const { Router } = require('express')
-const { PrismaClient } = require('@prisma/client')
+const prisma = require('../lib/prisma')
 
-const { applyPayment } = require('../lib/applyPayments') // central allocator
+const {
+  applyPayment,
+} = require('../services/applyPayments')
 
-const prisma = new PrismaClient()
+const {
+  syncPaymentFinancials,
+} = require('../services/syncPaymentFinancials')
+
+const {
+  syncRentBillFinancials,
+} = require('../services/syncRentBillFinancials')
+
+const {
+  syncWaterBillFinancials,
+} = require('../services/syncWaterBillFinancials')
+
+const authenticate =
+  require('../middleware/authenticate')
+
+const {
+  requirePermission
+} = require('../middleware/permissions')
+
 const paymentsRouter = Router()
 
-// List payments (now supports filtering by tenant)
-paymentsRouter.get('/', async (req, res) => {
+
+// ======================================================
+// LIST PAYMENTS (FIXED SEARCH + FILTER LOGIC)
+// ======================================================
+paymentsRouter.get('/',  authenticate, async (req, res) => {
   try {
     const page = Number(req.query.page ?? 1)
-    const pageSize = Math.min(Number(req.query.pageSize ?? 20), 100)
+
+    const pageSize = Math.min(
+      Number(req.query.pageSize ?? 20),
+      100
+    )
+
     const skip = (page - 1) * pageSize
 
-    const tenantId = req.query.tenantId ? Number(req.query.tenantId) : undefined
-    const rentBillId = req.query.rentBillId ? Number(req.query.rentBillId) : undefined
-    const waterBillId = req.query.waterBillId ? Number(req.query.waterBillId) : undefined
-    const from = req.query.from ? new Date(req.query.from) : undefined
-    const to = req.query.to ? new Date(req.query.to) : undefined
+    const tenantId = req.query.tenantId
+      ? Number(req.query.tenantId)
+      : undefined
 
-    // Base payment filter
-    const paymentWhere = {}
-    if (tenantId) paymentWhere.tenantId = tenantId
-    if (from || to) {
-      paymentWhere.paidAt = {
-        ...(from ? { gte: from } : {}),
-        ...(to ? { lte: to } : {})
-      }
+    const from = req.query.from
+      ? new Date(req.query.from)
+      : undefined
+
+    const to = req.query.to
+      ? new Date(req.query.to)
+      : undefined
+
+    const search = req.query.search?.trim()
+
+    const includeReversed =
+      req.query.includeReversed === 'true'
+
+    // ======================================================
+    // SAFE WHERE BUILDER (FIXED)
+    // ======================================================
+    const where = {
+      AND: [
+        // --------------------------------------------------
+        // Exclude reversed unless explicitly included
+        // --------------------------------------------------
+        !includeReversed
+          ? { isReversed: false }
+          : {},
+
+        // --------------------------------------------------
+        // Tenant filter
+        // --------------------------------------------------
+        tenantId
+          ? { tenantId }
+          : {},
+
+        // --------------------------------------------------
+        // Date range filter
+        // --------------------------------------------------
+        from || to
+          ? {
+              paidAt: {
+                ...(from && { gte: from }),
+                ...(to && { lte: to }),
+              },
+            }
+          : {},
+
+        // --------------------------------------------------
+        // SEARCH (FIXED RELATION + OR GROUPING)
+        // --------------------------------------------------
+        search
+          ? {
+              OR: [
+                {
+                  reference: {
+                    contains: search,
+                    mode: 'insensitive',
+                  },
+                },
+                {
+                  note: {
+                    contains: search,
+                    mode: 'insensitive',
+                  },
+                },
+                {
+                  tenant: {
+                    is: {
+                      name: {
+                        contains: search,
+                        mode: 'insensitive',
+                      },
+                    },
+                  },
+                },
+              ],
+            }
+          : {},
+      ],
     }
-
-    // Build allocation filter (optional)
-    const allocationConditions = []
-
-    if (rentBillId) {
-      allocationConditions.push({ billType: 'rent', billId: rentBillId })
-    }
-
-    if (waterBillId) {
-      allocationConditions.push({ billType: 'water', billId: waterBillId })
-    }
-
-    if (allocationConditions.length) {
-      paymentWhere.allocations = {
-        some: {
-          OR: allocationConditions
-        }
-      }
-    }
-
 
     const [items, total] = await Promise.all([
       prisma.payment.findMany({
-        where: paymentWhere,
-        orderBy: { paidAt: 'desc' },
+        where,
+
+        orderBy: {
+          paidAt: 'desc',
+        },
+
         skip,
         take: pageSize,
+
         include: {
           tenant: true,
-          allocations: {
-            include: {
-              rentBill: {
-                include: {
-                  lease: {
-                    include: {
-                      tenant: true,
-                      unit: true
-                    }
-                  }
-                }
-              },
-              waterBill: true
-            }
-          }
-        }
-      }),
-      prisma.payment.count({ where: paymentWhere })
-    ])
 
-    // Shape response for frontend
-    const result = items.map(p => ({
-      id: p.id,
-      amount: p.amount,
-      paidAt: p.paidAt,
-      method: p.method,
-      reference: p.reference,
-      note: p.note,
-      tenant: p.tenant
-        ? {
-            id: p.tenant.id,
-            name: p.tenant.name,
-            email: p.tenant.email,
-            phone: p.tenant.phone
-          }
-        : null,
-      allocations: p.allocations.map(a => ({
-        id: a.id,
-        billType: a.billType,
-        billId: a.billId,
-        amount: a.amount,
-        rentBill: a.billType === 'rent' && a.rentBill
-          ? {
-              id: a.rentBill.id,
-              dueDate: a.rentBill.dueDate,
-              amount: a.rentBill.amount,
-              paid: a.rentBill.paid,
-              lease: a.rentBill.lease
-                ? {
-                    id: a.rentBill.lease.id,
-                    monthlyRent: a.rentBill.lease.monthlyRent,
-                    startDate: a.rentBill.lease.startDate,
-                    endDate: a.rentBill.lease.endDate,
-                    tenant: a.rentBill.lease.tenant,
-                    unit: a.rentBill.lease.unit
-                  }
-                : null
-            }
-          : null,
-        waterBill: a.billType === 'water' && a.waterBill
-          ? {
-              id: a.waterBill.id,
-              dueDate: a.waterBill.dueDate,
-              amount: a.waterBill.amount,
-              status: a.waterBill.status
-            }
-          : null
-      }))
-    }))
+          allocations: {
+            where: {
+              isReversed: false,
+            },
+          },
+        },
+      }),
+
+      prisma.payment.count({
+        where,
+      }),
+    ])
 
     res.json({
       page,
       pageSize,
       total,
-      items: result
+      items,
     })
   } catch (e) {
     console.error('Error listing payments:', e)
-    res.status(500).json({ error: e.message })
+
+    res.status(500).json({
+      error: e.message,
+    })
   }
 })
 
-// Get one payment (allocation-aware)
-paymentsRouter.get('/:id', async (req, res) => {
-  try {
-    const id = Number(req.params.id)
 
-    const payment = await prisma.payment.findUnique({
-      where: { id },
-      include: {
-        tenant: true,
-        allocations: {
-          include: {
-            rentBill: {
-              include: {
-                lease: {
-                  include: {
-                    tenant: true,
-                    unit: true
-                  }
-                }
-              }
+// ======================================================
+// GET SINGLE PAYMENT
+// ======================================================
+paymentsRouter.get('/:id',  authenticate, async (req, res) => {
+
+  try {
+
+    const id =
+      Number(req.params.id)
+
+    const payment =
+      await prisma.payment.findUnique({
+        where: { id },
+
+        include: {
+          tenant: true,
+
+          allocations: {
+            where: {
+              isReversed: false,
             },
-            waterBill: true
-          }
-        }
-      }
-    })
+          },
+        },
+      })
 
     if (!payment) {
-      return res.status(404).json({ error: 'Payment not found' })
+      return res.status(404).json({
+        error: 'Payment not found',
+      })
     }
 
-    const result = {
-      id: payment.id,
-      amount: payment.amount,
-      paidAt: payment.paidAt,
-      method: payment.method,
-      reference: payment.reference,
-      note: payment.note,
-      tenant: payment.tenant
-        ? {
-            id: payment.tenant.id,
-            name: payment.tenant.name,
-            email: payment.tenant.email,
-            phone: payment.tenant.phone
-          }
-        : null,
-      allocations: payment.allocations.map(a => ({
-        id: a.id,
-        billType: a.billType,
-        billId: a.billId,
-        amount: a.amount,
-        rentBill: a.billType === 'rent' && a.rentBill
-          ? {
-              id: a.rentBill.id,
-              dueDate: a.rentBill.dueDate,
-              amount: a.rentBill.amount,
-              paid: a.rentBill.paid,
-              lease: a.rentBill.lease
-                ? {
-                    id: a.rentBill.lease.id,
-                    monthlyRent: a.rentBill.lease.monthlyRent,
-                    startDate: a.rentBill.lease.startDate,
-                    endDate: a.rentBill.lease.endDate,
-                    tenant: a.rentBill.lease.tenant,
-                    unit: a.rentBill.lease.unit
-                  }
-                : null
-            }
-          : null,
-        waterBill: a.billType === 'water' && a.waterBill
-          ? {
-              id: a.waterBill.id,
-              dueDate: a.waterBill.dueDate,
-              amount: a.waterBill.amount,
-              status: a.waterBill.status
-            }
-          : null
-      }))
-    }
+    res.json(payment)
 
-    res.json(result)
   } catch (e) {
-    console.error('Error fetching payment:', e)
-    res.status(500).json({ error: e.message })
+
+    console.error(
+      'Error fetching payment:',
+      e
+    )
+
+    res.status(500).json({
+      error: e.message,
+    })
   }
 })
 
-// Create payment (tenantId now required)
-paymentsRouter.post('/', async (req, res) => {
+
+// ======================================================
+// CREATE PAYMENT
+// ======================================================
+paymentsRouter.post('/', authenticate, requirePermission('RECORD_PAYMENT'), async (req, res) => {
+
   try {
-    const { tenantId, amount, paidAt, method, reference, note } = req.body
+
+    const {
+      tenantId,
+      amount,
+      paidAt,
+      method,
+      reference,
+      note,
+    } = req.body
 
     if (!tenantId || !amount) {
-      return res.status(400).json({ error: 'tenantId and amount are required' })
+      return res.status(400).json({
+        error:
+          'tenantId and amount are required',
+      })
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      return applyPayment(
-        {
-          tenantId: Number(tenantId),
-          amount: Number(amount),
-          paidAt: paidAt ? new Date(paidAt) : new Date(),
-          method,
-          reference,
-          note
-        },
-        tx
+    const result =
+      await prisma.$transaction(
+        async (tx) => {
+
+          return applyPayment(
+            {
+              tenantId:
+                Number(tenantId),
+
+              amount:
+                Number(amount),
+
+              paidAt:
+                paidAt
+                  ? new Date(paidAt)
+                  : new Date(),
+
+              method,
+              reference,
+              note,
+            },
+            tx
+          )
+        }
       )
-    })
 
     res.status(201).json(result)
+
   } catch (e) {
-    console.error('Error creating payment:', e)
-    res.status(500).json({ error: e.message })
+
+    console.error(
+      'Error creating payment:',
+      e
+    )
+
+    res.status(500).json({
+      error: e.message,
+    })
   }
 })
 
-// Update payment
+
+// ======================================================
+// UPDATE PAYMENT
+// Metadata-only update
+// ======================================================
 paymentsRouter.patch('/:id', async (req, res) => {
+
   try {
-    const id = Number(req.params.id)
 
-    const existing = await prisma.payment.findUnique({
-      where: { id }
-    })
+    const id =
+      Number(req.params.id)
 
-    if (!existing) {
-      return res.status(404).json({ error: 'Payment not found' })
-    }
+    const {
+      paidAt,
+      method,
+      reference,
+      note,
+    } = req.body
 
-    const { paidAt, method, reference, note } = req.body
+    const updated =
+      await prisma.payment.update({
+        where: { id },
 
-    const updateData = {}
-    if (paidAt !== undefined) updateData.paidAt = new Date(paidAt)
-    if (method !== undefined) updateData.method = method
-    if (reference !== undefined) updateData.reference = reference
-    if (note !== undefined) updateData.note = note
+        data: {
+          paidAt:
+            paidAt
+              ? new Date(paidAt)
+              : undefined,
 
-    const payment = await prisma.payment.update({
-      where: { id },
-      data: updateData,
-      include: {
-        tenant: true,
-        allocations: true
-      }
-    })
+          method,
+          reference,
+          note,
+        },
 
-    res.json({ payment })
+        include: {
+          tenant: true,
+
+          allocations: {
+            where: {
+              isReversed: false,
+            },
+          },
+        },
+      })
+
+    res.json(updated)
+
   } catch (e) {
-    console.error('Payment update error:', e)
-    res.status(500).json({ error: e.message })
+
+    console.error(
+      'Payment update error:',
+      e
+    )
+
+    res.status(500).json({
+      error: e.message,
+    })
   }
 })
 
-// Delete payment
-paymentsRouter.delete('/:id', async (req, res) => {
+
+// ======================================================
+// REVERSE PAYMENT
+// ======================================================
+paymentsRouter.patch('/:id/reverse', authenticate, async (req, res) => {
   try {
+
     const id = Number(req.params.id)
 
     const result = await prisma.$transaction(async (tx) => {
+
       const payment = await tx.payment.findUnique({
         where: { id },
+
         include: {
-          allocations: true
+          allocations: {
+            where: {
+              isReversed: false
+            }
+          }
         }
       })
 
@@ -310,103 +364,110 @@ paymentsRouter.delete('/:id', async (req, res) => {
         throw new Error('NOT_FOUND')
       }
 
-      // Capture affected bills before deletion
-      const affectedRentBills = payment.allocations
-        .filter(a => a.billType === 'rent')
-        .map(a => a.billId)
-
-      const affectedWaterBills = payment.allocations
-        .filter(a => a.billType === 'water')
-        .map(a => a.billId)
-
-      // Delete allocations first
-      await tx.paymentAllocation.deleteMany({
-        where: { paymentId: id }
-      })
-
-      // Delete payment
-      await tx.payment.delete({
-        where: { id }
-      })
-
-      return {
-        deletedPaymentId: id,
-        affectedRentBills,
-        affectedWaterBills
+      if (payment.isReversed) {
+        throw new Error('ALREADY_REVERSED')
       }
-    })
 
-    res.json({ ok: true, ...result })
-  } catch (e) {
-    if (e.message === 'NOT_FOUND') {
-      return res.status(404).json({ error: 'Payment not found' })
-    }
+      const reversedAt = new Date()
 
-    console.error('Payment delete error:', e)
-    res.status(500).json({ error: e.message })
-  }
-})
+      const affectedAllocations =
+        payment.allocations
 
+      // Reverse allocations
 
-// Get summary for a specific bill
-// Get summary for a specific rent bill (allocation-driven)
-paymentsRouter.get('/bill/:rentBillId/summary', async (req, res) => {
-  try {
-    const rentBillId = Number(req.params.rentBillId)
+      for (const allocation of affectedAllocations) {
 
-    const bill = await prisma.rentBill.findUnique({
-      where: { id: rentBillId },
-      include: {
-        lease: {
-          include: {
-            tenant: true,
-            unit: true
+        await tx.paymentAllocation.update({
+          where: {
+            id: allocation.id
+          },
+
+          data: {
+            isReversed: true,
+            reversedAt,
+            reversalReason:
+              `Payment reversed (#${payment.id})`
           }
+        })
+      }
+
+      // Reverse payment
+
+      await tx.payment.update({
+        where: { id },
+
+        data: {
+          isReversed: true,
+          reversedAt,
+          reversalReason:
+            'Payment manually reversed'
+        }
+      })
+
+      // Refresh payment snapshot
+
+      await syncPaymentFinancials(
+        tx,
+        payment.id
+      )
+
+      // Refresh affected bills
+
+      for (const allocation of affectedAllocations) {
+
+        if (
+          allocation.billType === 'rent' &&
+          allocation.rentBillId
+        ) {
+          await syncRentBillFinancials(
+            tx,
+            allocation.rentBillId
+          )
+        }
+
+        if (
+          allocation.billType === 'water' &&
+          allocation.waterBillId
+        ) {
+          await syncWaterBillFinancials(
+            tx,
+            allocation.waterBillId
+          )
         }
       }
-    })
 
-    if (!bill) {
-      return res.status(404).json({ error: 'RentBill not found' })
-    }
-
-    const agg = await prisma.paymentAllocation.aggregate({
-      where: {
-        billType: 'rent',
-        billId: rentBillId
-      },
-      _sum: { amount: true }
-    })
-
-    const totalPaid = agg._sum.amount ?? 0
-    const balance = bill.amount - totalPaid
-
-    res.json({
-      bill: {
-        id: bill.id,
-        amount: bill.amount,
-        dueDate: bill.dueDate,
-        paid: bill.paid,
-        lease: bill.lease
-          ? {
-              id: bill.lease.id,
-              monthlyRent: bill.lease.monthlyRent,
-              startDate: bill.lease.startDate,
-              endDate: bill.lease.endDate,
-              tenant: bill.lease.tenant,
-              unit: bill.lease.unit
-            }
-          : null
-      },
-      totals: {
-        totalPaid,
-        balance,
-        fullyPaid: totalPaid >= bill.amount
+      return {
+        reversedPaymentId: id
       }
     })
+
+    res.json({
+      ok: true,
+      ...result
+    })
+
   } catch (e) {
-    console.error('Summary fetch error:', e)
-    res.status(500).json({ error: e.message })
+
+    if (e.message === 'NOT_FOUND') {
+      return res.status(404).json({
+        error: 'Payment not found'
+      })
+    }
+
+    if (e.message === 'ALREADY_REVERSED') {
+      return res.status(409).json({
+        error: 'Payment has already been reversed'
+      })
+    }
+
+    console.error(
+      'Payment reversal error:',
+      e
+    )
+
+    res.status(500).json({
+      error: e.message
+    })
   }
 })
 

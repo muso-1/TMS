@@ -3,8 +3,11 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const leasesRouter = express.Router();
 
+const authenticate =
+  require('../middleware/authenticate')
+  
 // Create a new lease
-leasesRouter.post('/', async (req, res) => {
+leasesRouter.post('/', authenticate, async (req, res) => {
   try {
     const {
       tenantId,
@@ -47,7 +50,7 @@ leasesRouter.post('/', async (req, res) => {
 });
 
 // List all leases (with tenant + unit info)
-leasesRouter.get('/', async (req, res) => {
+leasesRouter.get('/', authenticate, async (req, res) => {
   try {
     const leases = await prisma.lease.findMany({
       include: {
@@ -63,7 +66,7 @@ leasesRouter.get('/', async (req, res) => {
 });
 
 // Get a single lease by ID
-leasesRouter.get('/:id', async (req, res) => {
+leasesRouter.get('/:id', authenticate, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const lease = await prisma.lease.findUnique({
@@ -83,7 +86,7 @@ leasesRouter.get('/:id', async (req, res) => {
   }
 });
 
-leasesRouter.patch('/:id', async (req, res) => {
+leasesRouter.patch('/:id', authenticate, async (req, res) => {
   try {
     const id = Number(req.params.id)
 
@@ -203,7 +206,7 @@ leasesRouter.patch('/:id', async (req, res) => {
 
 // Delete a lease
 // Also deletes rent bills under this lease id cascade is configured
-leasesRouter.delete('/:id', async (req, res) => {
+leasesRouter.delete('/:id', authenticate, async (req, res) => {
   try {
     const id = Number(req.params.id);
     await prisma.lease.delete({ where: { id } });

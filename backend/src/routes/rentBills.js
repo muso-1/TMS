@@ -6,526 +6,368 @@ const {
 } = require('../services/rentBillService')
 
 const {
-  deriveBillStatus
-} = require('../utils/billing')
+  syncRentBillFinancials,
+  buildRentBillResponse,
+} = require('../services/syncRentBillFinancials')
+
+const {
+  syncPaymentFinancials
+} = require('../services/syncPaymentFinancials')
+
+const authenticate =
+  require('../middleware/authenticate')
+
+const {
+  requirePermission
+} = require('../middleware/permissions')
 
 const prisma = new PrismaClient()
 const rentBillsRouter = Router()
 
 // =====================================================
-// HELPERS
-// =====================================================
-
-function buildRentBillResponse(
-  bill,
-  totalPaid = 0
-) {
-  const status =
-    deriveBillStatus({
-      amount: bill.amount,
-      totalPaid,
-      isVoided: bill.isVoided,
-    })
-
-  const rawBalance =
-    bill.amount - totalPaid
-
-  return {
-    id: bill.id,
-
-    amount: bill.amount,
-
-    dueDate: bill.dueDate,
-
-    // VOIDING
-    isVoided: bill.isVoided,
-    voidedAt: bill.voidedAt,
-    voidReason: bill.voidReason,
-
-    // FINANCIALS
-    status,
-
-    totalPaid,
-
-    balance:
-      rawBalance > 0
-        ? rawBalance
-        : 0,
-
-    // REMINDERS
-    reminderSent:
-      bill.reminderSent,
-
-    reminderSentAt:
-      bill.reminderSentAt,
-
-    // RELATIONS
-    lease: bill.lease && {
-      id: bill.lease.id,
-
-      monthlyRent:
-        bill.lease.monthlyRent,
-
-      startDate:
-        bill.lease.startDate,
-
-      endDate:
-        bill.lease.endDate,
-
-      tenant:
-        bill.lease.tenant,
-
-      unit:
-        bill.lease.unit,
-    },
-  }
-}
-
-// =====================================================
 // LIST RENT BILLS
 // =====================================================
 
-rentBillsRouter.get(
-  '/',
-  async (req, res) => {
-    try {
-      const bills =
-        await prisma.rentBill.findMany({
+rentBillsRouter.get('/', authenticate, async (req, res) => {
+  try {
+
+    const bills = await prisma.rentBill.findMany({
+      include: {
+        lease: {
           include: {
-            lease: {
-              include: {
-                tenant: true,
-                unit: true,
-              },
-            },
+            tenant: true,
+            unit: true,
           },
+        },
+      },
 
-          orderBy: [
-            {
-              dueDate: 'desc',
-            },
-          ],
-        })
+      orderBy: [
+        { dueDate: 'desc' },
+      ],
+    })
 
-      const billIds = bills.map(
-        (b) => b.id
-      )
+    res.json(
+      bills.map(buildRentBillResponse)
+    )
 
-      const allocations =
-        await prisma.paymentAllocation.groupBy(
-          {
-            by: ['rentBillId'],
+  } catch (e) {
 
-            where: {
-              billType: 'rent',
+    console.error(
+      'Error fetching rent bills:',
+      e
+    )
 
-              rentBillId: {
-                in: billIds,
-              },
-            },
-
-            _sum: {
-              amount: true,
-            },
-          }
-        )
-
-      const allocationMap =
-        Object.fromEntries(
-          allocations.map((a) => [
-            a.rentBillId,
-            a._sum.amount || 0,
-          ])
-        )
-
-      const results = bills.map(
-        (bill) => {
-          const totalPaid =
-            allocationMap[
-              bill.id
-            ] || 0
-
-          return buildRentBillResponse(
-            bill,
-            totalPaid
-          )
-        }
-      )
-
-      res.json(results)
-
-    } catch (e) {
-      console.error(
-        'Error fetching rent bills:',
-        e
-      )
-
-      res.status(500).json({
-        error: e.message,
-      })
-    }
+    res.status(500).json({
+      error: e.message,
+    })
   }
-)
+})
+
 
 // =====================================================
 // GET SINGLE RENT BILL
 // =====================================================
 
-rentBillsRouter.get(
-  '/:id',
-  async (req, res) => {
-    try {
-      const id = Number(
-        req.params.id
-      )
+rentBillsRouter.get('/:id', authenticate, async (req, res) => {
+  try {
 
-      const bill =
-        await prisma.rentBill.findFirst(
-          {
-            where: {
-              id,
-            },
+    const id = Number(req.params.id)
 
-            include: {
-              lease: {
-                include: {
-                  tenant: true,
-                  unit: true,
-                },
-              },
+    const bill = await prisma.rentBill.findFirst({
+      where: { id },
 
-              allocations: {
-                where: {
-                  billType: 'rent',
-                },
-              },
-            },
-          }
-        )
+      include: {
+        lease: {
+          include: {
+            tenant: true,
+            unit: true,
+          },
+        },
 
-      if (!bill) {
-        return res.status(404).json({
-          error:
-            'Rent bill not found',
-        })
-      }
+        allocations: {
+          where: {
+            isReversed: false,
+          },
 
-      const totalPaid =
-        bill.allocations.reduce(
-          (sum, allocation) =>
-            sum + allocation.amount,
-          0
-        )
+          include: {
+            payment: true,
+          },
+        },
+      },
+    })
 
-      const response =
-        buildRentBillResponse(
-          bill,
-          totalPaid
-        )
-
-      res.json(response)
-
-    } catch (e) {
-      console.error(
-        'Error fetching rent bill:',
-        e
-      )
-
-      res.status(500).json({
-        error: e.message,
+    if (!bill) {
+      return res.status(404).json({
+        error: 'Rent bill not found',
       })
     }
+
+    res.json({
+      ...buildRentBillResponse(bill),
+      allocations: bill.allocations,
+    })
+
+  } catch (e) {
+
+    console.error(
+      'Error fetching rent bill:',
+      e
+    )
+
+    res.status(500).json({
+      error: e.message,
+    })
   }
-)
+})
+
 
 // =====================================================
 // CREATE RENT BILL
 // =====================================================
 
-rentBillsRouter.post(
-  '/',
-  async (req, res) => {
-    try {
-      const {
-        leaseId,
-        dueDate,
-      } = req.body
+rentBillsRouter.post('/', authenticate, requirePermission('CREATE_BILL'), async (req, res) => {
+  try {
 
-      if (
-        !leaseId ||
-        !dueDate
-      ) {
-        return res.status(400).json(
-          {
-            error:
-              'leaseId and dueDate are required',
-          }
+    const {
+      leaseId,
+      dueDate,
+    } = req.body
+
+    if (!leaseId || !dueDate) {
+      return res.status(400).json({
+        error:
+          'leaseId and dueDate are required',
+      })
+    }
+
+    const lease =
+      await prisma.lease.findUnique({
+        where: {
+          id: Number(leaseId),
+        },
+
+        include: {
+          tenant: true,
+          unit: true,
+        },
+      })
+
+    if (!lease) {
+      return res.status(404).json({
+        error: 'Lease not found',
+      })
+    }
+
+    const bill =
+      await prisma.$transaction(async (tx) => {
+
+        const createdBill =
+          await createRentBillWithCredit({
+            tx,
+            lease,
+            amount: lease.monthlyRent,
+            dueDate: new Date(dueDate),
+          })
+
+        await syncRentBillFinancials(
+          tx,
+          createdBill.id
         )
-      }
 
-      const lease =
-        await prisma.lease.findUnique(
-          {
-            where: {
-              id: Number(
-                leaseId
-              ),
-            },
+        return createdBill
+      })
 
+    const fullBill =
+      await prisma.rentBill.findUnique({
+        where: {
+          id: bill.id,
+        },
+
+        include: {
+          lease: {
             include: {
               tenant: true,
               unit: true,
             },
-          }
-        )
-
-      if (!lease) {
-        return res.status(404).json(
-          {
-            error:
-              'Lease not found',
-          }
-        )
-      }
-
-      const bill =
-        await prisma.$transaction(
-          async (tx) => {
-            return createRentBillWithCredit(
-              {
-                tx,
-
-                lease,
-
-                amount:
-                  lease.monthlyRent,
-
-                dueDate:
-                  new Date(
-                    dueDate
-                  ),
-              }
-            )
-          }
-        )
-
-      const fullBill =
-        await prisma.rentBill.findUnique(
-          {
-            where: {
-              id: bill.id,
-            },
-
-            include: {
-              lease: {
-                include: {
-                  tenant: true,
-                  unit: true,
-                },
-              },
-            },
-          }
-        )
-
-      const response =
-        buildRentBillResponse(
-          fullBill,
-          0
-        )
-
-      res.status(201).json(
-        response
-      )
-
-    } catch (e) {
-      console.error(
-        'Error creating rent bill:',
-        e
-      )
-
-      res.status(500).json({
-        error: e.message,
+          },
+        },
       })
-    }
+
+    res.status(201).json(
+      buildRentBillResponse(fullBill)
+    )
+
+  } catch (e) {
+
+    console.error(
+      'Error creating rent bill:',
+      e
+    )
+
+    res.status(500).json({
+      error: e.message,
+    })
   }
-)
+})
+
 
 // =====================================================
 // VOID RENT BILL
 // =====================================================
 
-rentBillsRouter.patch(
-  '/:id/void',
-  async (req, res) => {
-    try {
-      const id = Number(
-        req.params.id
-      )
+rentBillsRouter.patch('/:id/void', authenticate, requirePermission('VOID_BILL'), async (req, res) => {
+  try {
 
-      const { reason } =
-        req.body || {}
+    const id = Number(req.params.id)
 
-      if (
-        !reason ||
-        !reason.trim()
-      ) {
-        return res.status(400).json(
-          {
-            error:
-              'Void reason is required',
-          }
+    const { reason } = req.body || {}
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({
+        error: 'Void reason is required',
+      })
+    }
+
+    await prisma.$transaction(async (tx) => {
+
+      // ============================================
+      // 1. FIND BILL
+      // ============================================
+
+      const bill =
+        await tx.rentBill.findFirst({
+          where: {
+            id,
+            isVoided: false,
+          },
+
+          include: {
+            lease: true,
+          },
+        })
+
+      if (!bill) {
+        throw new Error(
+          'Active rent bill not found'
         )
       }
 
-      await prisma.$transaction(
-        async (tx) => {
+      // ============================================
+      // 2. ENSURE LATEST BILL ONLY
+      // ============================================
 
-          // -----------------------------------
-          // FIND ACTIVE BILL
-          // -----------------------------------
+      const latestBill =
+        await tx.rentBill.findFirst({
+          where: {
+            leaseId: bill.leaseId,
+            isVoided: false,
+          },
 
-          const bill =
-            await tx.rentBill.findFirst(
-              {
-                where: {
-                  id,
-                  isVoided: false,
-                },
+          orderBy: [
+            { dueDate: 'desc' },
+            { createdAt: 'desc' },
+          ],
+        })
 
-                include: {
-                  lease: true,
-                },
-              }
-            )
+      if (!latestBill || latestBill.id !== bill.id) {
+        throw new Error(
+          'Only the latest rent bill can be voided'
+        )
+      }
 
-          if (!bill) {
-            return res.status(404).json(
-              {
-                error:
-                  'Active rent bill not found',
-              }
-            )
-          }
+      // ============================================
+      // 3. FETCH ACTIVE ALLOCATIONS
+      // ============================================
 
-          // -----------------------------------
-          // PREVENT VOIDING ALLOCATED BILLS
-          // -----------------------------------
+      const allocations =
+        await tx.paymentAllocation.findMany({
+          where: {
+            rentBillId: bill.id,
+            isReversed: false,
+          },
+        })
 
-          const allocationCount =
-            await tx.paymentAllocation.count(
-              {
-                where: {
-                  billType:
-                    'rent',
+      // ============================================
+      // 4. REVERSE ALLOCATIONS
+      // ============================================
 
-                  rentBillId:
-                    id,
-                },
-              }
-            )
+      const affectedPayments = new Set()
 
-          if (
-            allocationCount > 0
-          ) {
-            return res.status(400).json(
-              {
-                error:
-                  'Cannot void rent bill with applied payments or credits',
-              }
-            )
-          }
+      for (const allocation of allocations) {
 
-          // -----------------------------------
-          // ONLY LATEST BILL MAY BE VOIDED
-          // -----------------------------------
+        await tx.paymentAllocation.update({
+          where: {
+            id: allocation.id,
+          },
 
-          const latestBill =
-            await tx.rentBill.findFirst(
-              {
-                where: {
-                  leaseId:
-                    bill.leaseId,
+          data: {
+            isReversed: true,
+            reversedAt: new Date(),
+            reversalReason:
+              `Rent bill voided: ${reason.trim()}`,
+          },
+        })
 
-                  isVoided:
-                    false,
-                },
-
-                orderBy: [
-                  {
-                    dueDate:
-                      'desc',
-                  },
-
-                  {
-                    createdAt:
-                      'desc',
-                  },
-                ],
-              }
-            )
-
-          if (!latestBill) {
-            return res.status(400).json(
-              {
-                error:
-                  'Latest rent bill lookup failed',
-              }
-            )
-          }
-
-          if (
-            latestBill.id !==
-            bill.id
-          ) {
-            return res.status(400).json(
-              {
-                error:
-                  'Only the latest rent bill for this lease can be voided',
-              }
-            )
-          }
-
-          // -----------------------------------
-          // VOID BILL
-          // -----------------------------------
-
-          await tx.rentBill.update(
-            {
-              where: {
-                id: bill.id,
-              },
-
-              data: {
-                isVoided: true,
-
-                voidedAt:
-                  new Date(),
-
-                voidReason:
-                  reason.trim(),
-              },
-            }
+        if (allocation.paymentId) {
+          affectedPayments.add(
+            allocation.paymentId
           )
         }
-      )
+      }
 
-      res.json({
-        message:
-          'Rent bill voided successfully',
+      // ============================================
+      // 5. SYNC PAYMENTS
+      // ============================================
+
+      for (const paymentId of affectedPayments) {
+        await syncPaymentFinancials(
+          tx,
+          paymentId
+        )
+      }
+
+      // ============================================
+      // 6. VOID BILL
+      // ============================================
+
+      await tx.rentBill.update({
+        where: {
+          id: bill.id,
+        },
+
+        data: {
+          isVoided: true,
+          voidedAt: new Date(),
+          voidReason: reason.trim(),
+        },
       })
 
-    } catch (e) {
-      console.error(
-        'Error voiding rent bill:',
-        e
-      )
+      // ============================================
+      // 7. SYNC BILL SNAPSHOT
+      // ============================================
 
-      res.status(500).json({
-        error: e.message,
-      })
-    }
+      await syncRentBillFinancials(
+        tx,
+        bill.id
+      )
+    })
+
+    res.json({
+      message:
+        'Rent bill voided successfully',
+    })
+
+  } catch (e) {
+
+    console.error(
+      'Error voiding rent bill:',
+      e
+    )
+
+    res.status(400).json({
+      error: e.message,
+    })
   }
-)
+})
 
-module.exports =
-  rentBillsRouter
+module.exports = rentBillsRouter

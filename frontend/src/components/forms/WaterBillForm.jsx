@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-query'
 
 import {
-  createWaterBill,
+  createWaterBills,
   LatestUnitReading,
 } from '../../api/waterBills'
 
@@ -56,7 +56,7 @@ export default function WaterBillForm({
 
   const { mutate, isLoading } =
     useMutation({
-      mutationFn: createWaterBill,
+      mutationFn: createWaterBills,
 
       onSuccess: () => {
         toast.success(

@@ -2,227 +2,82 @@ const express = require('express')
 const { PrismaClient } = require('@prisma/client')
 
 const { sendBillReminder } = require('../services/reminderService')
+const { applyAvailableCreditToBill } = require('../services/applyAvailableCredit')
 
 const {
-  deriveBillStatus,
-} = require('../utils/billing')
+  syncWaterBillFinancials,
+  buildWaterBillResponse,
+} = require('../services/syncWaterBillFinancials')
+
+const {
+  syncPaymentFinancials,
+} = require('../services/syncPaymentFinancials')
 
 const {
   getLatestUnitReading,
   getActiveLeaseForUnit,
 } = require('../lib/water')
 
+const waterBillingEngine = require('../services/waterBillingEngine')
+
 const prisma = new PrismaClient()
 const router = express.Router()
 
-// ======================================================
-// RESPONSE BUILDER
-// ======================================================
-function buildWaterBillResponse(
-  bill,
-  totalPaid = 0
-) {
-  const status = deriveBillStatus({
-    amount: bill.amount,
-    totalPaid,
-    isVoided: bill.isVoided,
-  })
+const authenticate =
+  require('../middleware/authenticate')
 
-  return {
-    id: bill.id,
-
-    tenantId: bill.tenantId,
-    unitId: bill.unitId,
-
-    meterReadingId:
-      bill.meterReadingId,
-
-    previousReading:
-      bill.previousReading,
-
-    currentReading:
-      bill.currentReading,
-
-    unitsUsed: bill.unitsUsed,
-
-    amount: bill.amount,
-
-    dueDate: bill.dueDate,
-
-    // STATUS
-    status,
-
-    // FINANCIALS
-    totalPaid,
-
-    balance:
-      bill.amount - totalPaid,
-
-    // VOIDING
-    isVoided: bill.isVoided,
-    voidedAt: bill.voidedAt,
-    voidReason: bill.voidReason,
-
-    createdAt: bill.createdAt,
-
-    tenant: bill.tenant,
-    unit: bill.unit,
-  }
-}
+const {
+  requirePermission
+} = require('../middleware/permissions')
 
 // ======================================================
 // CREATE WATER BILLS
 // ======================================================
-router.post('/', async (req, res) => {
+router.post('/', authenticate, requirePermission('CREATE_BILL'), async (req, res) => {
   try {
+
     const billsData = Array.isArray(req.body)
       ? req.body
       : [req.body]
 
     if (!billsData.length) {
       return res.status(400).json({
-        error:
-          'No water bills provided.',
+        error: 'No water bills provided.'
       })
     }
 
-    const createdBills = []
+    const result =
+      await waterBillingEngine.createMany(
+        billsData
+      )
 
-    await prisma.$transaction(
-      async (tx) => {
-        for (const bill of billsData) {
-          const {
-            unitId,
-            currentReading,
-            dueDate,
-          } = bill
-
-          if (
-            !unitId ||
-            currentReading == null ||
-            !dueDate
-          ) {
-            throw new Error(
-              'unitId, currentReading and dueDate are required.'
-            )
-          }
-
-          // 1. Active lease
-          const lease =
-            await getActiveLeaseForUnit(
-              unitId,
-              tx
-            )
-
-          if (!lease) {
-            throw new Error(
-              `No active lease found for unit ${unitId}`
-            )
-          }
-
-          // 2. Latest valid reading
-          const latestReading =
-            await getLatestUnitReading(
-              unitId,
-              tx
-            )
-
-          const previousReading =
-            latestReading?.reading ?? 0
-
-          // 3. Usage
-          const unitsUsed =
-            currentReading -
-            previousReading
-
-          if (unitsUsed < 0) {
-            throw new Error(
-              'Current reading must be >= previous reading.'
-            )
-          }
-
-          const ratePerUnit = 350
-
-          const amount =
-            unitsUsed * ratePerUnit
-
-          // 4. Create meter reading
-          const meterReading =
-            await tx.waterMeterReading.create({
-              data: {
-                unitId,
-                reading:
-                  currentReading,
-              },
-            })
-
-          // 5. Create bill
-          const newBill =
-            await tx.waterBill.create({
-              data: {
-                tenantId:
-                  lease.tenantId,
-
-                unitId,
-
-                meterReadingId:
-                  meterReading.id,
-
-                previousReading,
-                currentReading,
-
-                unitsUsed,
-                amount,
-
-                dueDate:
-                  new Date(dueDate),
-              },
-
-              include: {
-                tenant: true,
-                unit: true,
-              },
-            })
-
-          createdBills.push(newBill)
-        }
-      }
-    )
-
-    if (createdBills.length) {
+    if (result.length) {
       await sendBillReminder(
         'water',
         {
           onlyNewBills: true,
-          newBillIds:
-            createdBills.map(
-              (b) => b.id
-            ),
+          newBillIds: result.map(
+            b => b.id
+          )
         }
       )
     }
 
-    const response =
-      createdBills.map((bill) =>
-        buildWaterBillResponse(
-          bill,
-          0
-        )
-      )
-
     res.status(201).json({
       message:
-        'Water bills created successfully.',
-      created: response,
+        'Water bills processed successfully',
+      created: result,
     })
-  } catch (error) {
+
+  } catch (err) {
+
     console.error(
       'Error creating water bills:',
-      error
+      err
     )
 
     res.status(400).json({
-      error: error.message,
+      error: err.message
     })
   }
 })
@@ -232,32 +87,31 @@ router.post('/', async (req, res) => {
 // ======================================================
 router.get(
   '/unit/:unitId/latest-reading',
+  authenticate,
   async (req, res) => {
+
     try {
-      const unitId = Number(
-        req.params.unitId
-      )
+
+      const unitId =
+        Number(req.params.unitId)
 
       if (!unitId) {
         return res.status(400).json({
-          error:
-            'Invalid unit ID',
+          error: 'Invalid unit ID',
         })
       }
 
       const latest =
-        await prisma.waterMeterReading.findFirst(
-          {
-            where: {
-              unitId,
-            },
+        await prisma.waterMeterReading.findFirst({
+          where: {
+            unitId,
+            isVoided: false,
+          },
 
-            orderBy: {
-              readingDate:
-                'desc',
-            },
-          }
-        )
+          orderBy: {
+            readingDate: 'desc',
+          },
+        })
 
       const lease =
         await prisma.lease.findFirst({
@@ -278,7 +132,9 @@ router.get(
         tenant:
           lease?.tenant ?? null,
       })
+
     } catch (error) {
+
       console.error(error)
 
       res.status(500).json({
@@ -289,11 +145,24 @@ router.get(
   }
 )
 
+router.get('/config/water-rate', async (req, res) => {
+  const config = await prisma.systemConfig.findUnique({
+    where: { key: 'WATER_DEFAULT_RATE' },
+  })
+
+  res.json({
+    rate: Number(config?.value ?? 350),
+  })
+})
+
+
 // ======================================================
 // LIST WATER BILLS
 // ======================================================
-router.get('/', async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
+
   try {
+
     const bills =
       await prisma.waterBill.findMany({
         include: {
@@ -306,51 +175,15 @@ router.get('/', async (req, res) => {
         },
       })
 
-    const billIds = bills.map(
-      (b) => b.id
-    )
-
-    const allocations =
-      await prisma.paymentAllocation.groupBy(
-        {
-          by: ['waterBillId'],
-
-          where: {
-            billType: 'water',
-
-            waterBillId: {
-              in: billIds,
-            },
-          },
-
-          _sum: {
-            amount: true,
-          },
-        }
+    const results =
+      bills.map(
+        buildWaterBillResponse
       )
-
-    const allocationMap =
-      Object.fromEntries(
-        allocations.map((a) => [
-          a.waterBillId,
-          a._sum.amount || 0,
-        ])
-      )
-
-    const results = bills.map(
-      (bill) => {
-        const totalPaid =
-          allocationMap[bill.id] || 0
-
-        return buildWaterBillResponse(
-          bill,
-          totalPaid
-        )
-      }
-    )
 
     res.json(results)
+
   } catch (error) {
+
     console.error(
       'Error fetching water bills:',
       error
@@ -363,40 +196,37 @@ router.get('/', async (req, res) => {
   }
 })
 
+
 // ======================================================
 // GET SINGLE WATER BILL
 // ======================================================
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticate, async (req, res) => {
+
   try {
-    const id = Number(
-      req.params.id
-    )
+
+    const id =
+      Number(req.params.id)
 
     const bill =
-      await prisma.waterBill.findFirst(
-        {
-          where: {
-            id,
-            isVoided: false,
-          },
+      await prisma.waterBill.findFirst({
+        where: { id },
 
-          include: {
-            tenant: true,
-            unit: true,
+        include: {
+          tenant: true,
+          unit: true,
 
-            allocations: {
-              where: {
-                billType:
-                  'water',
-              },
+          allocations: {
+            where: {
+              billType: 'water',
+              isReversed: false,
+            },
 
-              include: {
-                payment: true,
-              },
+            include: {
+              payment: true,
             },
           },
-        }
-      )
+        },
+      })
 
     if (!bill) {
       return res.status(404).json({
@@ -405,17 +235,9 @@ router.get('/:id', async (req, res) => {
       })
     }
 
-    const totalPaid =
-      bill.allocations.reduce(
-        (sum, allocation) =>
-          sum + allocation.amount,
-        0
-      )
-
     const response =
       buildWaterBillResponse(
-        bill,
-        totalPaid
+        bill
       )
 
     res.json({
@@ -423,7 +245,9 @@ router.get('/:id', async (req, res) => {
       allocations:
         bill.allocations,
     })
+
   } catch (error) {
+
     console.error(
       'Error fetching water bill:',
       error
@@ -436,17 +260,19 @@ router.get('/:id', async (req, res) => {
   }
 })
 
+
 // ======================================================
 // UPDATE WATER BILL
-// Only due date editable
 // ======================================================
-router.put('/:id', async (req, res) => {
-  try {
-    const id = Number(
-      req.params.id
-    )
+router.put('/:id', authenticate, requirePermission('UPDATE_BILL'), async (req, res) => {
 
-    const { dueDate } = req.body
+  try {
+
+    const id =
+      Number(req.params.id)
+
+    const { dueDate } =
+      req.body
 
     const existing =
       await prisma.waterBill.findFirst({
@@ -468,21 +294,22 @@ router.put('/:id', async (req, res) => {
       })
     }
 
-    // Prevent editing allocated bills
+    // ============================================
+    // BLOCK EDITING IF ACTIVE ALLOCATIONS EXIST
+    // ============================================
     const allocationCount =
-      await prisma.paymentAllocation.count(
-        {
-          where: {
-            billType: 'water',
-            waterBillId: id,
-          },
-        }
-      )
+      await prisma.paymentAllocation.count({
+        where: {
+          billType: 'water',
+          waterBillId: id,
+          isReversed: false,
+        },
+      })
 
     if (allocationCount > 0) {
       return res.status(400).json({
         error:
-          'Cannot edit water bill with payments applied.',
+          'Cannot edit water bill with active payments applied.',
       })
     }
 
@@ -491,9 +318,10 @@ router.put('/:id', async (req, res) => {
         where: { id },
 
         data: {
-          dueDate: dueDate
-            ? new Date(dueDate)
-            : undefined,
+          dueDate:
+            dueDate
+              ? new Date(dueDate)
+              : undefined,
         },
 
         include: {
@@ -502,14 +330,31 @@ router.put('/:id', async (req, res) => {
         },
       })
 
-    const response =
-      buildWaterBillResponse(
-        updated,
-        0
-      )
+    await syncWaterBillFinancials(
+      prisma,
+      updated.id
+    )
 
-    res.json(response)
+    const synced =
+      await prisma.waterBill.findUnique({
+        where: {
+          id: updated.id,
+        },
+
+        include: {
+          tenant: true,
+          unit: true,
+        },
+      })
+
+    res.json(
+      buildWaterBillResponse(
+        synced
+      )
+    )
+
   } catch (error) {
+
     console.error(
       'Error updating water bill:',
       error
@@ -521,104 +366,149 @@ router.put('/:id', async (req, res) => {
   }
 })
 
+
 // ======================================================
 // VOID WATER BILL
 // ======================================================
-router.patch(
-  '/:id/void',
-  async (req, res) => {
-    try {
-      const id = Number(
-        req.params.id
-      )
+router.patch('/:id/void', authenticate, requirePermission('VOID_BILL'), async (req, res) => {
 
-      const { reason } = req.body
+  try {
 
-      if (
-        !reason ||
-        !reason.trim()
-      ) {
-        return res.status(400).json({
-          error:
-            'Void reason is required.',
-        })
-      }
+    const id =
+      Number(req.params.id)
 
-      await prisma.$transaction(
-        async (tx) => {
-          // 1. Find active bill
-          const bill =
-            await tx.waterBill.findFirst(
-              {
-                where: {
-                  id,
-                  isVoided: false,
-                },
+    const { reason } =
+      req.body
 
-                include: {
-                  allocations: true,
-                },
-              }
-            )
+    if (
+      !reason ||
+      !reason.trim()
+    ) {
+      return res.status(400).json({
+        error:
+          'Void reason is required.',
+      })
+    }
 
-          if (!bill) {
-            throw new Error(
-              'Active water bill not found.'
-            )
-          }
+    await prisma.$transaction(
+      async (tx) => {
 
-          // 2. Prevent voiding allocated bills
-          if (
-            bill.allocations.length >
-            0
-          ) {
-            throw new Error(
-              'Cannot void a bill with payments allocated.'
-            )
-          }
-
-          // 3. Ensure latest bill
-          const latestBill =
-            await tx.waterBill.findFirst(
-              {
-                where: {
-                  unitId:
-                    bill.unitId,
-
-                  isVoided: false,
-                },
-
-                orderBy: [
-                  {
-                    dueDate:
-                      'desc',
-                  },
-                  {
-                    createdAt:
-                      'desc',
-                  },
-                ],
-              }
-            )
-
-          if (!latestBill) {
-            throw new Error(
-              'Latest bill lookup failed.'
-            )
-          }
-
-          if (
-            latestBill.id !== bill.id
-          ) {
-            throw new Error(
-              'Only the latest water bill for a unit can be voided.'
-            )
-          }
-
-          // 4. Void bill
-          await tx.waterBill.update({
+        // ============================================
+        // FIND ACTIVE BILL
+        // ============================================
+        const bill =
+          await tx.waterBill.findFirst({
             where: {
-              id: bill.id,
+              id,
+              isVoided: false,
+            },
+          })
+
+        if (!bill) {
+          throw new Error(
+            'Active water bill not found.'
+          )
+        }
+
+        // ============================================
+        // ENSURE LATEST BILL ONLY
+        // ============================================
+        const latestBill =
+          await tx.waterBill.findFirst({
+            where: {
+              unitId: bill.unitId,
+              isVoided: false,
+            },
+
+            orderBy: [
+              { dueDate: 'desc' },
+              { createdAt: 'desc' },
+            ],
+          })
+
+        if (
+          !latestBill ||
+          latestBill.id !== bill.id
+        ) {
+          throw new Error(
+            'Only the latest water bill for a unit can be voided.'
+          )
+        }
+
+        // ============================================
+        // FETCH ACTIVE ALLOCATIONS
+        // ============================================
+        const allocations =
+          await tx.paymentAllocation.findMany({
+            where: {
+              waterBillId: bill.id,
+              isReversed: false,
+            },
+          })
+
+        // ============================================
+        // REVERSE ALLOCATIONS
+        // ============================================
+        for (const allocation of allocations) {
+
+          await tx.paymentAllocation.update({
+            where: {
+              id: allocation.id,
+            },
+
+            data: {
+              isReversed: true,
+              reversedAt: new Date(),
+
+              reversalReason:
+                `Water bill voided: ${reason.trim()}`,
+            },
+          })
+
+          // ============================================
+          // RESYNC PAYMENT SNAPSHOTS
+          // ============================================
+          await syncPaymentFinancials(
+            tx,
+            allocation.paymentId
+          )
+        }
+
+        // ============================================
+        // VOID BILL
+        // ============================================
+        await tx.waterBill.update({
+          where: {
+            id: bill.id,
+          },
+
+          data: {
+            isVoided: true,
+
+            voidedAt:
+              new Date(),
+
+            voidReason:
+              reason.trim(),
+          },
+        })
+
+        // ============================================
+        // RESYNC BILL SNAPSHOTS
+        // ============================================
+        await syncWaterBillFinancials(
+          tx,
+          bill.id
+        )
+
+        // ============================================
+        // VOID LINKED METER READING
+        // ============================================
+        if (bill.meterReadingId) {
+
+          await tx.waterMeterReading.update({
+            where: {
+              id: bill.meterReadingId,
             },
 
             data: {
@@ -628,48 +518,29 @@ router.patch(
                 new Date(),
 
               voidReason:
-                reason.trim(),
+                `Voided with bill #${bill.id}: ${reason.trim()}`,
             },
           })
-
-          // 5. Void linked meter reading
-          if (bill.meterReadingId) {
-            await tx.waterMeterReading.update(
-              {
-                where: {
-                  id: bill.meterReadingId,
-                },
-
-                data: {
-                  isVoided: true,
-
-                  voidedAt:
-                    new Date(),
-
-                  voidReason:
-                    `Voided with bill #${bill.id}: ${reason.trim()}`,
-                },
-              }
-            )
-          }
         }
-      )
+      }
+    )
 
-      res.json({
-        message:
-          'Water bill voided successfully.',
-      })
-    } catch (error) {
-      console.error(
-        'Error voiding water bill:',
-        error
-      )
+    res.json({
+      message:
+        'Water bill voided successfully.',
+    })
 
-      res.status(400).json({
-        error: error.message,
-      })
-    }
+  } catch (error) {
+
+    console.error(
+      'Error voiding water bill:',
+      error
+    )
+
+    res.status(400).json({
+      error: error.message,
+    })
   }
-)
+})
 
 module.exports = router

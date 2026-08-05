@@ -26,220 +26,162 @@ import {
 export default function Rent() {
   const queryClient = useQueryClient()
 
-  // =====================================
-  // RENT BILLS
-  // =====================================
-  const {
-    data: bills = [],
-    isLoading,
-  } = useQuery({
+  const { data: bills = [], isLoading } = useQuery({
     queryKey: ['rent-bills'],
     queryFn: listRentBills,
   })
 
-  // =====================================
-  // CREATE MODAL
-  // =====================================
-  const [openCreate, setOpenCreate] =
-    useState(false)
+  const [openCreate, setOpenCreate] = useState(false)
+  const [openVoid, setOpenVoid] = useState(false)
+  const [voidingBill, setVoidingBill] = useState(null)
 
-  // =====================================
-  // VOID MODAL
-  // =====================================
-  const [openVoid, setOpenVoid] =
-    useState(false)
+  const [openDetails, setOpenDetails] = useState(false)
+  const [selectedBillId, setSelectedBillId] = useState(null)
 
-  const [voidingBill, setVoidingBill] =
-    useState(null)
-
-  // =====================================
-  // DETAILS MODAL
-  // =====================================
-  const [openDetails, setOpenDetails] =
-    useState(false)
-
-  const [selectedBillId, setSelectedBillId] =
-    useState(null)
-
-  const {
-    data: billDetails,
-    isLoading: loadingBill,
-  } = useQuery({
-    queryKey: [
-      'rent-bill',
-      selectedBillId,
-    ],
-
-    queryFn: () =>
-      getRentBill(selectedBillId),
-
-    enabled:
-      openDetails && !!selectedBillId,
+  const { data: billDetails, isLoading: loadingBill } = useQuery({
+    queryKey: ['rent-bill', selectedBillId],
+    queryFn: () => getRentBill(selectedBillId),
+    enabled: openDetails && !!selectedBillId,
   })
 
-  // =====================================
-  // REMINDERS
-  // =====================================
-  const [loadingReminder, setLoadingReminder] =
-    useState(false)
+  const [loadingReminder, setLoadingReminder] = useState(false)
 
-  const handleSendReminder = async (
-    billId
-  ) => {
+  // =====================================================
+  // REMINDERS
+  // =====================================================
+  const handleSendReminder = async (billId) => {
     try {
       setLoadingReminder(true)
 
-      const res = await sendReminder(
-        'rent',
-        billId
-      )
+      const res = await sendReminder('rent', billId)
 
-      alert(
-        res.message ||
-          'Reminder sent successfully!'
-      )
+      alert(res.message || 'Reminder sent successfully!')
 
-      queryClient.invalidateQueries([
-        'rent-bills',
-      ])
+      queryClient.invalidateQueries(['rent-bills'])
     } catch (err) {
       console.error(err)
-
       alert('Failed to send reminder.')
     } finally {
       setLoadingReminder(false)
     }
   }
 
-  const handleSendBulkReminders =
-    async () => {
-      if (
-        !confirm(
-          'Send reminders for all pending rent bills?'
-        )
-      ) {
-        return
-      }
+  const handleSendBulkReminders = async () => {
+    if (!confirm('Send reminders for all pending rent bills?')) return
 
-      try {
-        setLoadingReminder(true)
+    try {
+      setLoadingReminder(true)
 
-        const res =
-          await sendBulkReminders('rent')
+      const res = await sendBulkReminders('rent')
 
-        alert(
-          res.message ||
-            'Bulk reminders sent successfully!'
-        )
+      alert(res.message || 'Bulk reminders sent successfully!')
 
-        queryClient.invalidateQueries([
-          'rent-bills',
-        ])
-      } catch (err) {
-        console.error(err)
-
-        alert(
-          'Failed to send bulk reminders.'
-        )
-      } finally {
-        setLoadingReminder(false)
-      }
+      queryClient.invalidateQueries(['rent-bills'])
+    } catch (err) {
+      console.error(err)
+      alert('Failed to send bulk reminders.')
+    } finally {
+      setLoadingReminder(false)
     }
+  }
 
-  // =====================================
+  // =====================================================
   // TABLE COLUMNS
-  // =====================================
+  // =====================================================
   const columns = [
     {
       key: 'tenant',
       header: 'Tenant',
-
-      cell: (r) =>
-        r.lease?.tenant?.name || '—',
+      cell: (r) => r.lease?.tenant?.name || '—',
     },
 
     {
       key: 'amount',
       header: 'Amount',
-
-      cell: (r) =>
-        formatMoney(r.amount),
+      cell: (r) => formatMoney(r.amount),
     },
 
     {
       key: 'totalPaid',
       header: 'Total Paid',
-
-      cell: (r) =>
-        formatMoney(r.totalPaid || 0),
+      cell: (r) => formatMoney(r.totalRentPaid || 0),
     },
 
     {
       key: 'outstanding',
-      header: 'Outstanding Rent',
-
-      cell: (r) =>
-        formatMoney(r.balance || 0),
+      header: 'Outstanding',
+      cell: (r) => formatMoney(r.outstandingAmount || 0),
     },
 
     {
       key: 'dueDate',
       header: 'Due Date',
-
-      cell: (r) =>
-        formatDate(r.dueDate),
+      cell: (r) => formatDate(r.dueDate),
     },
 
     {
       key: 'status',
       header: 'Status',
-
       cell: (r) => {
         switch (r.status) {
           case 'voided':
-            return 'Voided'
+            return (
+              <span className="text-gray-500 font-medium">
+                Voided
+              </span>
+            )
 
           case 'paid':
-            return 'Paid'
+            return (
+              <span className="text-green-600 font-medium">
+                Paid
+              </span>
+            )
 
-          case 'partial':
-            return 'Partial'
+          case 'partially_paid':
+            return (
+              <span className="text-yellow-600 font-medium">
+                Partial
+              </span>
+            )
 
-          case 'overpaid':
-            return 'Overpaid'
+          case 'overdue':
+            return (
+              <span className="text-red-600 font-medium">
+                Overdue
+              </span>
+            )
 
+          case 'unpaid':
           default:
-            return 'Pending'
+            return (
+              <span className="text-gray-700 font-medium">
+                Unpaid
+              </span>
+            )
         }
-      }
+      },
     },
 
     {
       key: 'actions',
       header: 'Actions',
-
       cell: (r) => {
-        const isVoided = r.isVoided
-        const status = r.status
-
-        const isPending = status === 'pending'
-        const isPartial = status === 'partial'
-        const isPaid = status === 'paid'
-        const isOverpaid = status === 'overpaid'
-
-        const canAct =
-          !isVoided && (isPending || isPartial)
-
-        const canVoid =
-          !isVoided && isPending
+        const isVoided = r.status === 'voided'
+        const isPending = r.status === 'unpaid'
+        const isPartial = r.status === 'partially_paid'
+        const isPaid = r.status === 'paid'
+        const isOverdue = r.status === 'overdue'
 
         const canRemind =
-          !isVoided && (isPending || isPartial)
+          !isVoided && (isPending || isPartial || isOverdue)
+
+        const canVoid = !isVoided
 
         return (
           <div className="flex gap-3 flex-wrap items-center">
 
-            {/* VIEW (always available) */}
+            {/* VIEW */}
             <button
               onClick={() => {
                 setSelectedBillId(r.id)
@@ -253,9 +195,7 @@ export default function Rent() {
             {/* REMINDER */}
             {canRemind && (
               <button
-                onClick={() =>
-                  handleSendReminder(r.id)
-                }
+                onClick={() => handleSendReminder(r.id)}
                 disabled={loadingReminder}
                 className="text-green-600 hover:underline"
               >
@@ -272,100 +212,54 @@ export default function Rent() {
                 }}
                 className="text-red-600 hover:underline"
               >
-                Void
+                {r.totalRentPaid > 0
+                  ? 'Void & Restore Payment'
+                  : 'Void'}
               </button>
             )}
 
-            {/* STATUS BADGE */}
-            {isVoided ? (
-              <span className="text-gray-500 font-medium">
-                Voided
-              </span>
-            ) : isPaid ? (
-              <span className="text-green-600 font-medium">
-                Paid
-              </span>
-            ) : isOverpaid ? (
-              <span className="text-blue-600 font-medium">
-                Overpaid
-              </span>
-            ) : isPartial ? (
-              <span className="text-yellow-600 font-medium">
-                Partial
-              </span>
-            ) : (
-              <span className="text-gray-700 font-medium">
-                Pending
-              </span>
-            )}
           </div>
         )
-      }
+      },
     },
   ]
 
-  if (isLoading) {
-    return <div>Loading...</div>
-  }
+  if (isLoading) return <div>Loading...</div>
+
+  const safeDetails = billDetails || {}
 
   return (
     <div className="space-y-4">
 
-      {/* ================================= */}
-      {/* ACTION BUTTONS */}
-      {/* ================================= */}
       <div className="flex justify-between items-center">
-
         <button
           className="bg-black text-black px-3 py-2 rounded"
-          onClick={() =>
-            setOpenCreate(true)
-          }
+          onClick={() => setOpenCreate(true)}
         >
           Create Rent Bill
         </button>
 
         <button
-          onClick={
-            handleSendBulkReminders
-          }
+          onClick={handleSendBulkReminders}
           disabled={loadingReminder}
-          className="bg-blue-600 text-black px-3 py-2 rounded hover:bg-blue-700"
+          className="bg-blue-600 text-black px-3 py-2 rounded"
         >
-          {loadingReminder
-            ? 'Sending...'
-            : 'Send All Reminders'}
+          {loadingReminder ? 'Sending...' : 'Send All Reminders'}
         </button>
       </div>
 
-      {/* ================================= */}
-      {/* TABLE */}
-      {/* ================================= */}
-      <Table
-        columns={columns}
-        data={bills}
-      />
+      <Table columns={columns} data={bills} />
 
-      {/* ================================= */}
-      {/* CREATE MODAL */}
-      {/* ================================= */}
+      {/* CREATE */}
       <Modal
         title="Create Rent Bill"
         open={openCreate}
-        onClose={() =>
-          setOpenCreate(false)
-        }
+        onClose={() => setOpenCreate(false)}
       >
-        <RentBillForm
-          onClose={() =>
-            setOpenCreate(false)
-          }
-        />
+        <RentBillForm onClose={() => setOpenCreate(false)} />
       </Modal>
 
-      {/* ================================= */}
-      {/* VOID MODAL */}
-      {/* ================================= */}
+      {/* VOID */}
       <Modal
         title="Void Rent Bill"
         open={openVoid}
@@ -383,9 +277,7 @@ export default function Rent() {
         />
       </Modal>
 
-      {/* ================================= */}
-      {/* DETAILS MODAL */}
-      {/* ================================= */}
+      {/* DETAILS */}
       <Modal
         title="Rent Bill Details"
         open={openDetails}
@@ -400,59 +292,36 @@ export default function Rent() {
           <div className="space-y-2">
 
             <div>
-              <strong>Tenant:</strong>{' '}
-              {
-                billDetails.lease?.tenant
-                  ?.name
-              }
+              <strong>Tenant:</strong> {safeDetails.lease?.tenant?.name}
             </div>
 
             <div>
-              <strong>Amount:</strong>{' '}
-              {formatMoney(
-                billDetails.amount
-              )}
+              <strong>Amount:</strong> {formatMoney(safeDetails.amount)}
+            </div>
+
+            {safeDetails.totalRentPaid > 0 &&
+              safeDetails.status !== 'voided' && (
+                <div className="text-amber-600">
+                  Voiding this bill will reverse allocations
+                  and return {formatMoney(safeDetails.totalRentPaid)}
+                  to tenant credit.
+                </div>
+            )}
+
+            <div>
+              <strong>Outstanding:</strong> {formatMoney(safeDetails.outstandingAmount || 0)}
             </div>
 
             <div>
-              <strong>Total Paid:</strong>{' '}
-              {formatMoney(
-                billDetails.totalPaid
-              )}
+              <strong>Due Date:</strong> {formatDate(safeDetails.dueDate)}
             </div>
 
-            <div>
-              <strong>Balance:</strong>{' '}
-              {formatMoney(
-                billDetails.balance
-              )}
-            </div>
-
-            <div>
-              <strong>Due Date:</strong>{' '}
-              {formatDate(
-                billDetails.dueDate
-              )}
-            </div>
-
-            {billDetails.isVoided && (
+            {safeDetails.status === 'voided' && (
               <>
-                <div className="text-red-600">
-                  <strong>Voided</strong>
-                </div>
+                <div className="text-red-600 font-bold">Voided</div>
 
                 <div>
-                  <strong>Reason:</strong>{' '}
-                  {
-                    billDetails.voidReason
-                  }
-                </div>
-
-                <div>
-                  <strong>Voided At:</strong>{' '}
-                  {formatDate(
-                    billDetails.voidedAt
-                  )}
+                  <strong>Reason:</strong> {safeDetails.voidReason}
                 </div>
               </>
             )}

@@ -1,38 +1,70 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createPayment } from '../../api/payments'
+import { createPayment, updatePayment } from '../../api/payments'
 import { listTenants } from '../../api/tenants'
 
-export default function PaymentForm({ onClose }) {
+export default function PaymentForm({
+  payment = null,
+  onClose
+}) {
   const queryClient = useQueryClient()
 
-  const [tenantId, setTenantId] = useState('')
-  const [amount, setAmount] = useState('')
-  const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10))
-  const [method, setMethod] = useState('')
-  const [reference, setReference] = useState('')
-  const [note, setNote] = useState('')
+  const isEditing = Boolean(payment)
 
-  // Fetch tenants for dropdown
+  const [tenantId, setTenantId] = useState(payment?.tenantId || '')
+  const [amount, setAmount] = useState(payment?.amount || '')
+  const [paidAt, setPaidAt] = useState(
+    payment?.paidAt
+      ? payment.paidAt.slice(0, 10)
+      : new Date().toISOString().slice(0, 10)
+  )
+  const [method, setMethod] = useState(payment?.method || '')
+  const [reference, setReference] = useState(payment?.reference || '')
+  const [note, setNote] = useState(payment?.note || '')
+
   const { data: tenants = [], isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants'],
-    queryFn: listTenants
+    queryFn: listTenants,
+    enabled: !isEditing
   })
 
   const mutation = useMutation({
-    mutationFn: createPayment,
+    mutationFn: (payload) => {
+      if (isEditing) {
+        return updatePayment(payment.id, payload)
+      }
+
+      return createPayment(payload)
+    },
+
     onSuccess: () => {
-      queryClient.invalidateQueries(['payments'])
-      queryClient.invalidateQueries(['tenants'])
+      queryClient.invalidateQueries({ queryKey: ['payments'] })
+      queryClient.invalidateQueries({ queryKey: ['tenants'] })
       onClose()
     },
+
     onError: (error) => {
-      console.error('❌ Payment creation failed:', error)
+      console.error(
+        `❌ Payment ${isEditing ? 'update' : 'creation'} failed:`,
+        error
+      )
     }
   })
 
   const handleSubmit = (e) => {
     e.preventDefault()
+
+    if (isEditing) {
+      mutation.mutate({
+        paidAt,
+        method,
+        reference,
+        note
+      })
+
+      return
+    }
+
     mutation.mutate({
       tenantId: Number(tenantId),
       amount: Number(amount),
@@ -45,11 +77,20 @@ export default function PaymentForm({ onClose }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Tenant selector */}
+
+      {/* Tenant */}
       <div>
         <label className="block mb-1">Tenant</label>
-        {tenantsLoading ? (
-          <div>Loading tenants…</div>
+
+        {isEditing ? (
+          <input
+            type="text"
+            value={payment?.tenant?.name || ''}
+            disabled
+            className="border px-2 py-1 w-full bg-gray-100 text-gray-600"
+          />
+        ) : tenantsLoading ? (
+          <div>Loading tenants...</div>
         ) : (
           <select
             value={tenantId}
@@ -58,9 +99,13 @@ export default function PaymentForm({ onClose }) {
             required
           >
             <option value="">Select tenant</option>
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} ({t.email})
+
+            {tenants.map((tenant) => (
+              <option
+                key={tenant.id}
+                value={tenant.id}
+              >
+                {tenant.name} ({tenant.email})
               </option>
             ))}
           </select>
@@ -70,19 +115,33 @@ export default function PaymentForm({ onClose }) {
       {/* Amount */}
       <div>
         <label className="block mb-1">Amount</label>
+
         <input
           type="number"
           step="0.01"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          className="border px-2 py-1 w-full"
+          disabled={isEditing}
           required
+          className={`border px-2 py-1 w-full ${
+            isEditing
+              ? 'bg-gray-100 text-gray-600 cursor-not-allowed'
+              : ''
+          }`}
         />
+
+        {isEditing && (
+          <p className="text-xs text-gray-500 mt-1">
+            Amount cannot be edited. Reverse the payment and create a new one if
+            the amount is incorrect.
+          </p>
+        )}
       </div>
 
       {/* Paid At */}
       <div>
         <label className="block mb-1">Paid At</label>
+
         <input
           type="date"
           value={paidAt}
@@ -92,14 +151,15 @@ export default function PaymentForm({ onClose }) {
         />
       </div>
 
-      {/* Method */}
+      {/* Payment Method */}
       <div>
         <label className="block mb-1">Payment Method</label>
+
         <input
           type="text"
-          placeholder="e.g. Cash, M-Pesa, Bank Transfer"
           value={method}
           onChange={(e) => setMethod(e.target.value)}
+          placeholder="Cash, M-Pesa, Bank Transfer"
           className="border px-2 py-1 w-full"
         />
       </div>
@@ -107,11 +167,12 @@ export default function PaymentForm({ onClose }) {
       {/* Reference */}
       <div>
         <label className="block mb-1">Reference</label>
+
         <input
           type="text"
-          placeholder="Transaction ID or Cheque No."
           value={reference}
           onChange={(e) => setReference(e.target.value)}
+          placeholder="Transaction ID or Cheque Number"
           className="border px-2 py-1 w-full"
         />
       </div>
@@ -119,17 +180,18 @@ export default function PaymentForm({ onClose }) {
       {/* Note */}
       <div>
         <label className="block mb-1">Note</label>
+
         <textarea
-          placeholder="Optional notes about the payment"
           value={note}
           onChange={(e) => setNote(e.target.value)}
+          rows={3}
           className="border px-2 py-1 w-full"
-          rows={2}
+          placeholder="Optional notes"
         />
       </div>
 
       {/* Buttons */}
-      <div className="flex justify-end space-x-2">
+      <div className="flex justify-end gap-2">
         <button
           type="button"
           onClick={onClose}
@@ -137,11 +199,17 @@ export default function PaymentForm({ onClose }) {
         >
           Cancel
         </button>
+
         <button
           type="submit"
-          className="bg-black text-black px-3 py-1 rounded"
+          disabled={mutation.isPending}
+          className="bg-black text-white px-3 py-1 rounded disabled:opacity-50"
         >
-          Record Payment
+          {mutation.isPending
+            ? 'Saving...'
+            : isEditing
+              ? 'Update Payment'
+              : 'Record Payment'}
         </button>
       </div>
     </form>

@@ -1,189 +1,211 @@
 const prisma = require('../lib/prisma')
 
 // ------------------------------------------------------------
-// Returns: { rent: number, water: number }
-// Always returns both keys, even when there are no allocations.
-// ------------------------------------------------------------
-async function getAllocationSumsByBillPeriod(
-  from,
-  to
-) {
-  const rows =
-    await prisma.paymentAllocation.groupBy({
-      by: ['billType'],
+async function getBillSumsByPeriod(from, to) {
 
-      where: {
-        billType: {
-          in: ['rent', 'water']
-        },
-
-        OR: [
-          {
-            rentBill: {
-              isVoided: false,
-
-              dueDate: {
-                gte: from,
-                lte: to
-              }
-            }
-          },
-
-          {
-            waterBill: {
-              isVoided: false,
-
-              dueDate: {
-                gte: from,
-                lte: to
-              }
-            }
+  const [rentAlloc, waterAlloc, rentBills, waterBills] =
+    await Promise.all([
+      prisma.paymentAllocation.aggregate({
+        where: {
+          billType: 'rent',
+          isReversed: false,
+          rentBill: {
+            dueDate: { gte: from, lte: to }
           }
-        ]
-      },
+        },
+        _sum: { amount: true }
+      }),
 
-      _sum: {
-        amount: true
-      }
-    })
+      prisma.paymentAllocation.aggregate({
+        where: {
+          billType: 'water',
+          isReversed: false,
+          waterBill: {
+            dueDate: { gte: from, lte: to }
+          }
+        },
+        _sum: { amount: true }
+      }),
 
-  const result = {
-    rent: 0,
-    water: 0
+      prisma.rentBill.aggregate({
+        where: {
+          isVoided: false,
+          dueDate: { gte: from, lte: to }
+        },
+        _sum: { amount: true }
+      }),
+
+      prisma.waterBill.aggregate({
+        where: {
+          isVoided: false,
+          dueDate: { gte: from, lte: to }
+        },
+        _sum: { amount: true }
+      })
+    ])
+
+  return {
+    rent: rentBills._sum?.amount ?? 0,
+    rentPaid: rentAlloc._sum?.amount ?? 0,
+
+    water: waterBills._sum?.amount ?? 0,
+    waterPaid: waterAlloc._sum?.amount ?? 0,
   }
-
-  for (const row of rows || []) {
-    if (
-      row.billType === 'rent' ||
-      row.billType === 'water'
-    ) {
-      result[row.billType] =
-        row._sum?.amount ?? 0
-    }
-  }
-
-  return result
 }
 
 // ------------------------------------------------------------
-// Returns: number
-// Always returns 0 when there are no rent bills.
+// RENT SUMMARY USING PERSISTED FINANCIALS
 // ------------------------------------------------------------
-async function getRentBilled(from, to) {
-  const agg = await prisma.rentBill.aggregate({
-    where: {
-      isVoided: false,
-      dueDate: {
-        gte: from,
-        lte: to
-      }
-    },
-    _sum: {
-      amount: true
-    }
-  })
+async function getRentSummary(from, to) {
 
-  return agg?._sum?.amount ?? 0
-}
-
-// ------------------------------------------------------------
-// Returns: Array<{ id: string, amount: number }>
-// Always returns an array.
-// ------------------------------------------------------------
-async function getRentBillsInPeriod(from, to) {
   const bills = await prisma.rentBill.findMany({
     where: {
       isVoided: false,
-
-      dueDate: {
-        gte: from,
-        lte: to
-      }
+      dueDate: { gte: from, lte: to }
     },
     select: {
       id: true,
-      amount: true
+      amount: true,
+      dueDate: true,
+      isVoided: true
     }
   })
 
-  return bills ?? []
-}
+  const billIds = bills.map(b => b.id)
 
-// ------------------------------------------------------------
-// Returns: { [rentBillId]: number }
-// Always returns an object.
-// ------------------------------------------------------------
-async function getRentAllocationsByBill() {
-  const rows = await prisma.paymentAllocation.groupBy({
-    by: ['rentBillId'],
+  const allocations = await prisma.paymentAllocation.findMany({
     where: {
-      billType: 'rent',
-      rentBillId: {
-        not: null
-      },
-      rentBill: {
-        isVoided: false
-      }
+      rentBillId: { in: billIds },
+      isReversed: false
     },
-    _sum: {
-      amount: true
+    select: {
+      amount: true,
+      rentBillId: true
     }
   })
 
-  const map = {}
+  const paidMap = new Map()
 
-  for (const row of rows || []) {
-    if (row.rentBillId != null) {
-      map[row.rentBillId] = row._sum?.amount ?? 0
-    }
+  for (const a of allocations) {
+    paidMap.set(
+      a.rentBillId,
+      (paidMap.get(a.rentBillId) || 0) + a.amount
+    )
   }
 
-  return map
-}
+  let billed = 0
+  let paid = 0
+  let outstanding = 0
 
-// ------------------------------------------------------------
-// Returns:
-// {
-//   fullyPaid: number,
-//   partiallyPaid: number,
-//   unpaid: number,
-//   totalPaid: number
-// }
-// Always returns all fields.
-// ------------------------------------------------------------
-function classifyRentBills(rentBills = [], allocationMap = {}) {
   let fullyPaid = 0
   let partiallyPaid = 0
   let unpaid = 0
-  let totalPaid = 0
+  let overdue = 0
 
-  for (const bill of rentBills) {
-    const amount = bill?.amount ?? 0
-    const paid = allocationMap?.[bill?.id] ?? 0
+  const now = new Date()
 
-    totalPaid += paid
+  for (const bill of bills) {
+    const p = paidMap.get(bill.id) || 0
+    const o = Math.max(bill.amount - p, 0)
 
-    if (paid === 0) {
-      unpaid++
-    } else if (paid < amount) {
-      partiallyPaid++
-    } else {
-      fullyPaid++
-    }
+    billed += bill.amount
+    paid += p
+    outstanding += o
+
+    if (p >= bill.amount) fullyPaid++
+    else if (p > 0) partiallyPaid++
+    else if (bill.dueDate < now) overdue++
+    else unpaid++
   }
 
   return {
+    billed,
+    paid,
+    outstanding,
     fullyPaid,
     partiallyPaid,
     unpaid,
-    totalPaid
+    overdue,
+  }
+}
+
+// ------------------------------------------------------------
+// WATER SUMMARY USING PERSISTED FINANCIALS
+// ------------------------------------------------------------
+async function getWaterSummary(from, to) {
+
+  const bills = await prisma.waterBill.findMany({
+    where: {
+      isVoided: false,
+      dueDate: { gte: from, lte: to }
+    },
+    select: {
+      id: true,
+      amount: true,
+      dueDate: true
+    }
+  })
+
+  const billIds = bills.map(b => b.id)
+
+  const allocations = await prisma.paymentAllocation.findMany({
+    where: {
+      waterBillId: { in: billIds },
+      isReversed: false
+    },
+    select: {
+      amount: true,
+      waterBillId: true
+    }
+  })
+
+  const paidMap = new Map()
+
+  for (const a of allocations) {
+    paidMap.set(
+      a.waterBillId,
+      (paidMap.get(a.waterBillId) || 0) + a.amount
+    )
+  }
+
+  let billed = 0
+  let paid = 0
+  let outstanding = 0
+
+  let fullyPaid = 0
+  let partiallyPaid = 0
+  let unpaid = 0
+  let overdue = 0
+
+  const now = new Date()
+
+  for (const bill of bills) {
+    const p = paidMap.get(bill.id) || 0
+    const o = Math.max(bill.amount - p, 0)
+
+    billed += bill.amount
+    paid += p
+    outstanding += o
+
+    if (p >= bill.amount) fullyPaid++
+    else if (p > 0) partiallyPaid++
+    else if (bill.dueDate < now) overdue++
+    else unpaid++
+  }
+
+  return {
+    billed,
+    paid,
+    outstanding,
+    fullyPaid,
+    partiallyPaid,
+    unpaid,
+    overdue,
   }
 }
 
 module.exports = {
-  getAllocationSumsByBillPeriod,
-  getRentBilled,
-  getRentBillsInPeriod,
-  getRentAllocationsByBill,
-  classifyRentBills
+  getBillSumsByPeriod,
+  getRentSummary,
+  getWaterSummary,
 }

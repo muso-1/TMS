@@ -1,73 +1,43 @@
-// Creates a rent bill and automatically applies tenant credit (if any)
+const { applyAvailableCreditToBill} = require('./applyAvailableCredit')
+const { syncRentBillFinancials} = require('./syncRentBillFinancials')
+
 async function createRentBillWithCredit({
   tx,
   lease,
   amount,
   dueDate
 }) {
-  // 1. Create rent bill
+
+  // ============================================
+  // 1. CREATE BILL
+  // ============================================
   const bill = await tx.rentBill.create({
     data: {
       leaseId: lease.id,
       amount,
       dueDate,
-      paid: false,
-      reminderSent: false,
-      reminderSentAt: null
+      status: 'unpaid',
+      totalRentPaid: 0,
+      outstandingAmount: amount,
+      paidAt: null,
+      isVoided: false
     }
   })
 
-  // 2. Fetch tenant balance
-  const tenantBalance = await tx.tenantBalance.findUnique({
-    where: { tenantId: lease.tenantId }
-  })
+await applyAvailableCreditToBill({
+  tx,
+  tenantId: lease.tenantId,
+  billType: 'rent',
+  billId: bill.id,
+  billAmount: amount
+})
 
-  if (!tenantBalance || tenantBalance.balance <= 0) {
-    return bill
-  }
+await syncRentBillFinancials(
+  tx,
+  bill.id
+)
 
-  // 3. Apply available credit
-  const creditToApply = Math.min(
-    tenantBalance.balance,
-    bill.amount
-  )
-
-  if (creditToApply > 0) {
-    // Create a system payment representing credit usage
-    const creditPayment = await tx.payment.create({
-      data: {
-        tenantId: lease.tenantId,
-        amount: creditToApply,
-        paidAt: new Date(),
-        method: 'credit',
-        reference: `CREDIT-${bill.id}`,
-        note: 'Auto-applied tenant credit'
-      }
-    })
-    
-    // Allocate that payment to the bill
-    await tx.paymentAllocation.create({
-      data: {
-        paymentId: creditPayment.id,
-        billType: 'rent',
-        rentBillId: bill.id,
-        amount: creditToApply
-      }
-    })
-
-    //Reduce tenant balance
-    await tx.tenantBalance.update({
-      where: { tenantId: lease.tenantId },
-      data: {
-        balance: {
-          decrement: creditToApply
-        }
-      }
-    })
-
-  }
-
-  return bill
+return bill
 }
 
 module.exports = {

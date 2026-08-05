@@ -25,7 +25,6 @@ model Tenant {
   maintenance Maintenance[]
 
   payments    Payment[]     // added: direct link to payments
-  balance     TenantBalance? // added: track overpayments or credits
 }
 
 model Unit {
@@ -66,60 +65,83 @@ model Lease {
   rentBills RentBill[]
 }
 
+enum BillStatus {
+  unpaid
+  partially_paid
+  paid
+  overdue
+  voided
+}
+
 model RentBill {
-  id              Int       @id @default(autoincrement())
-  amount          Float
-  dueDate         DateTime
-  reminderSent    Boolean   @default(false)
-  reminderSentAt  DateTime?
-  leaseId         Int
-  lease           Lease     @relation(fields: [leaseId], references: [id])
+  id                    Int       @id @default(autoincrement())
+  amount                Float
+  totalRentPaid         Float        @default(0)
 
-  allocations     PaymentAllocation[]
+  outstandingAmount     Float?
 
-  createdAt       DateTime  @default(now())
-  paidAt          DateTime?
+  status                BillStatus   @default(unpaid)
+  dueDate               DateTime
+  reminderSent          Boolean   @default(false)
+  reminderSentAt        DateTime?
+  leaseId               Int
+  lease                 Lease     @relation(fields: [leaseId], references: [id])
+
+  allocations           PaymentAllocation[]
+
+  createdAt             DateTime  @default(now())
+  paidAt                DateTime?
 
   // VOIDING
-  isVoided        Boolean  @default(false)
-  voidedAt        DateTime?
-  voidReason      String?
+  isVoided              Boolean  @default(false)
+  voidedAt              DateTime?
+  voidReason            String?
 
   @@index([dueDate])
   @@index([leaseId])
 }
 
 model WaterBill {
-  id              Int      @id @default(autoincrement())
-  tenantId        Int
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  id                    Int      @id @default(autoincrement())
+  tenantId              Int
+  tenant                Tenant   @relation(fields: [tenantId], references: [id])
   
-  unitId          Int
-  unit            Unit     @relation(fields: [unitId], references: [id])
+  unitId                Int
+  unit                  Unit     @relation(fields: [unitId], references: [id])
 
-  meterReadingId Int? @unique
+  meterReadingId        Int? @unique
 
-  meterReading WaterMeterReading? @relation(fields: [meterReadingId], references: [id])
+  meterReading          WaterMeterReading? @relation(fields: [meterReadingId], references: [id])
     
-  previousReading Int      @default(0)
-  currentReading  Int
-  unitsUsed       Int
-  amount          Float
-  dueDate         DateTime
+  previousReading       Int      @default(0)
+  currentReading        Int
+  unitsUsed             Int
+  amount                Float
+  totalWaterPaid        Float        @default(0)
 
-  allocations     PaymentAllocation[]
+  outstandingAmount     Float
+  
+  billingCycle          String
+  ratePerUnit           Float
 
-  paidAt          DateTime?
+  status                BillStatus   @default(unpaid)
+  dueDate               DateTime
+
+  allocations           PaymentAllocation[]
+
+  paidAt                DateTime?
   
-  reminderSent    Boolean   @default(false)
-  reminderSentAt  DateTime?
+  reminderSent          Boolean   @default(false)
+  reminderSentAt        DateTime?
   
-  createdAt       DateTime  @default(now())
+  createdAt             DateTime  @default(now())
 
   // VOIDING
-  isVoided        Boolean  @default(false)
-  voidedAt        DateTime?
-  voidReason      String?
+  isVoided              Boolean  @default(false)
+  voidedAt              DateTime?
+  voidReason            String?
+
+  @@unique([unitId, billingCycle])
 }
 
 model WaterMeterReading {
@@ -130,6 +152,7 @@ model WaterMeterReading {
 
   reading     Int
   readingDate DateTime @default(now())
+  billingCycle String
 
   createdAt   DateTime @default(now())
 
@@ -141,6 +164,7 @@ model WaterMeterReading {
   voidReason  String?
 
   @@index([unitId, readingDate])
+  @@unique([unitId, billingCycle])
 }
 
 model Payment {
@@ -148,13 +172,20 @@ model Payment {
   tenantId   Int
   tenant     Tenant    @relation(fields: [tenantId], references: [id])
 
-  amount     Float
+  amountReceived  Float?
+  totalAllocated  Float @default(0)
+  unappliedAmount Float @default(0)
+
   paidAt     DateTime  @default(now())
   method     String?
   reference  String?
   note       String?
 
   allocations PaymentAllocation[]
+
+  isReversed     Boolean   @default(false)
+  reversedAt     DateTime?
+  reversalReason String?
 
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
@@ -179,6 +210,10 @@ model PaymentAllocation {
   amount       Float
   createdAt    DateTime @default(now())
 
+  isReversed     Boolean @default(false)
+  reversedAt     DateTime?
+  reversalReason String?
+
   @@index([paymentId])
   @@index([billType])
 }
@@ -193,10 +228,25 @@ model Maintenance {
   tenant      Tenant?  @relation(fields: [tenantId], references: [id])
 }
 
-model TenantBalance {
+model SystemConfig {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @unique
-  balance   Float    @default(0) // positive = credit, negative = debt
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  key       String   @unique
+  value     String
   updatedAt DateTime @updatedAt
+}
+
+enum UserRole {
+  admin
+  accountant
+  user
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique
+  passwordHash  String
+  role          UserRole
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
